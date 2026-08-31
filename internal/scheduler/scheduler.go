@@ -36,6 +36,24 @@ func New(lc fx.Lifecycle, cfg config.Config, worker *importjob.Worker, metrics *
 			return nil, err
 		}
 	}
+	if cfg.Cron.MetadataCleanupSpec != "" {
+		if _, err := runner.AddFunc(cfg.Cron.MetadataCleanupSpec, func() {
+			started := time.Now()
+			status := "success"
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			purged, runErr := worker.PurgeExpiredMetadata(ctx, cfg.Cron.MetadataRetention, cfg.Cron.CleanupBatchSize)
+			if runErr != nil {
+				status = "error"
+				logger.ErrorContext(ctx, "expired import metadata cleanup failed", "error", runErr, "purged", purged)
+			} else {
+				logger.InfoContext(ctx, "expired import metadata cleanup completed", "purged", purged)
+			}
+			metrics.ObserveCron("import_metadata_cleanup", status, started)
+		}); err != nil {
+			return nil, err
+		}
+	}
 	lc.Append(fx.Hook{OnStart: func(context.Context) error {
 		if cfg.Cron.Enabled {
 			runner.Start()

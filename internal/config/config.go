@@ -164,10 +164,12 @@ type PSK struct {
 	GRPCMethods []string `mapstructure:"grpc_methods"`
 }
 type Cron struct {
-	Enabled           bool   `mapstructure:"enabled"`
-	Timezone          string `mapstructure:"timezone"`
-	ImportCleanupSpec string `mapstructure:"import_cleanup_spec"`
-	CleanupBatchSize  int    `mapstructure:"cleanup_batch_size"`
+	Enabled             bool          `mapstructure:"enabled"`
+	Timezone            string        `mapstructure:"timezone"`
+	ImportCleanupSpec   string        `mapstructure:"import_cleanup_spec"`
+	MetadataCleanupSpec string        `mapstructure:"metadata_cleanup_spec"`
+	MetadataRetention   time.Duration `mapstructure:"metadata_retention"`
+	CleanupBatchSize    int           `mapstructure:"cleanup_batch_size"`
 }
 type Migration struct {
 	AutoUp       bool   `mapstructure:"auto_up"`
@@ -460,6 +462,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.issuer", "")
 	v.SetDefault("auth.audience", "import-service")
 	v.SetDefault("cron.import_cleanup_spec", "0 0 * * * *")
+	v.SetDefault("cron.metadata_cleanup_spec", "0 30 * * * *")
+	v.SetDefault("cron.metadata_retention", "8760h")
 	v.SetDefault("cron.cleanup_batch_size", 100)
 	v.SetDefault("import.upload_ttl", "15m")
 	v.SetDefault("import.result_ttl", "168h")
@@ -612,6 +616,9 @@ func (c Config) Validate() error {
 	}
 	if c.Cron.Enabled && c.Cron.ImportCleanupSpec != "" && c.Cron.CleanupBatchSize < 1 {
 		return errors.New("cron.cleanup_batch_size must be positive when import cleanup is enabled")
+	}
+	if c.Cron.Enabled && c.Cron.MetadataCleanupSpec != "" && (c.Cron.CleanupBatchSize < 1 || c.Cron.MetadataRetention <= 0) {
+		return errors.New("cron metadata cleanup requires positive retention and batch size")
 	}
 	if c.EventBus.Enabled && c.EventBus.ConsumerAckWait <= c.Import.JobTimeout {
 		return errors.New("event_bus.consumer_ack_wait must exceed import.job_timeout")

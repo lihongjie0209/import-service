@@ -132,6 +132,19 @@ func (r *fakeRepository) Expire(_ context.Context, _ sqlx.ExtContext, value Job,
 	r.job.Version++
 	return r.job, nil
 }
+func (r *fakeRepository) ListExpiredMetadataBefore(_ context.Context, before time.Time, limit int) ([]Job, error) {
+	if limit > 0 && r.job.Status == StatusExpired && r.job.UpdatedAt.Before(before) {
+		return []Job{r.job}, nil
+	}
+	return nil, nil
+}
+func (r *fakeRepository) DeleteExpiredMetadata(_ context.Context, _ sqlx.ExtContext, value Job, before time.Time) (bool, error) {
+	if r.job.ID != value.ID || r.job.Version != value.Version || r.job.Status != StatusExpired || !r.job.UpdatedAt.Before(before) {
+		return false, nil
+	}
+	r.job = Job{}
+	return true, nil
+}
 func (r *fakeRepository) AddOutbox(_ context.Context, _ sqlx.ExtContext, value OutboxEvent) error {
 	r.events = append(r.events, value)
 	return nil

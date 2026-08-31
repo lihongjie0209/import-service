@@ -42,6 +42,20 @@ func TestLoad_UsesCanonicalPlatformEventStreamDefaults(t *testing.T) {
 	if cfg.ProviderClient.Retry.MaxAttempts != 3 || cfg.ProviderClient.Retry.InitialBackoff != 100*time.Millisecond || cfg.ProviderClient.Retry.MaxBackoff != time.Second {
 		t.Fatalf("unexpected provider retry defaults: %+v", cfg.ProviderClient.Retry)
 	}
+	if cfg.Cron.ImportCleanupSpec != "0 0 * * * *" || cfg.Cron.MetadataCleanupSpec != "0 30 * * * *" || cfg.Cron.MetadataRetention != 365*24*time.Hour || cfg.Cron.CleanupBatchSize != 100 {
+		t.Fatalf("unexpected import cleanup defaults: %+v", cfg.Cron)
+	}
+}
+
+func TestConfigRejectsNonPositiveImportMetadataRetention(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("cron:\n  enabled: true\n  metadata_retention: 0s\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() error = nil, want metadata retention validation error")
+	}
 }
 
 func TestConfig_ValidateJWTSecret(t *testing.T) {

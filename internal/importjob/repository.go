@@ -29,6 +29,8 @@ type Repository interface {
 	Fail(context.Context, sqlx.ExtContext, Job, string) (Job, error)
 	ListExpired(context.Context, time.Time, int) ([]Job, error)
 	Expire(context.Context, sqlx.ExtContext, Job, time.Time) (Job, error)
+	ListExpiredMetadataBefore(context.Context, time.Time, int) ([]Job, error)
+	DeleteExpiredMetadata(context.Context, sqlx.ExtContext, Job, time.Time) (bool, error)
 	AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error
 }
 
@@ -166,6 +168,24 @@ func (r *SQLRepository) ListExpired(ctx context.Context, now time.Time, limit in
 func (r *SQLRepository) Expire(ctx context.Context, e sqlx.ExtContext, value Job, now time.Time) (Job, error) {
 	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE import_jobs SET status='expired',version=version+1,updated_at=?,updated_by='import-cleaner' WHERE tenant_id=? AND id=? AND status=?"), now, value.TenantID, value.ID, value.Status)
 	return r.afterUpdate(ctx, e, value.TenantID, value.ID, result, err)
+}
+
+func (r *SQLRepository) ListExpiredMetadataBefore(ctx context.Context, before time.Time, limit int) ([]Job, error) {
+	items := []Job{}
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+jobColumns+" FROM import_jobs WHERE status='expired' AND updated_at<? ORDER BY updated_at,id LIMIT ?"), before, limit)
+	return items, err
+}
+
+func (r *SQLRepository) DeleteExpiredMetadata(ctx context.Context, e sqlx.ExtContext, value Job, before time.Time) (bool, error) {
+	result, err := e.ExecContext(ctx, r.db.Rebind("DELETE FROM import_jobs WHERE tenant_id=? AND id=? AND version=? AND status='expired' AND updated_at<?"), value.TenantID, value.ID, value.Version, before)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
 }
 
 func (r *SQLRepository) AddOutbox(ctx context.Context, e sqlx.ExtContext, value OutboxEvent) error {

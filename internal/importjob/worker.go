@@ -260,6 +260,35 @@ func (w *Worker) CleanupExpired(ctx context.Context, limit int) (int, error) {
 	return cleaned, nil
 }
 
+// PurgeExpiredMetadata removes old terminal job metadata after all result
+// objects were deleted and the expiration event remained queryable for retention.
+func (w *Worker) PurgeExpiredMetadata(ctx context.Context, retention time.Duration, limit int) (int, error) {
+	if retention <= 0 || limit <= 0 {
+		return 0, errors.New("metadata retention and cleanup limit must be positive")
+	}
+	before := w.now().Add(-retention)
+	jobs, err := w.repository.ListExpiredMetadataBefore(ctx, before, limit)
+	if err != nil {
+		return 0, err
+	}
+	purged := 0
+	for _, job := range jobs {
+		deleted := false
+		err := w.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+			var deleteErr error
+			deleted, deleteErr = w.repository.DeleteExpiredMetadata(ctx, tx, job, before)
+			return deleteErr
+		})
+		if err != nil {
+			return purged, err
+		}
+		if deleted {
+			purged++
+		}
+	}
+	return purged, nil
+}
+
 func (w *Worker) fail(ctx context.Context, job Job, expectedStatus, code string, cause error) error {
 	now := w.now()
 	expires := now.Add(w.resultTTL)
