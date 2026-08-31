@@ -7,10 +7,26 @@ import (
 	"github.com/lihongjie0209/import-service/internal/auth"
 	"github.com/lihongjie0209/import-service/internal/config"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+func TestImportGRPCRequirementCoversEveryBusinessMethod(t *testing.T) {
+	t.Parallel()
+	resolve := importGRPCRequirement(true)
+	methods := []string{importv1.ImportService_ListImportDatasets_FullMethodName, importv1.ImportService_DescribeAvailableImportDataset_FullMethodName, importv1.ImportService_CreateImportJob_FullMethodName, importv1.ImportService_CompleteUpload_FullMethodName, importv1.ImportService_GetImportJob_FullMethodName, importv1.ImportService_ListImportJobs_FullMethodName, importv1.ImportService_CancelImportJob_FullMethodName, importv1.ImportService_RetryImportJob_FullMethodName, importv1.ImportService_ConfirmImportJob_FullMethodName, importv1.ImportService_CreateErrorReportDownloadURL_FullMethodName}
+	for _, method := range methods {
+		requirement, ok := resolve(method)
+		if !ok || requirement.Resource == "" || requirement.Action == "" {
+			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
+	}
+	if _, ok := importGRPCRequirement(false)(importv1.ImportService_GetImportJob_FullMethodName); ok {
+		t.Fatal("disabled authorization must not enforce")
+	}
+}
 
 func TestAuthenticateGRPCPSKWildcard(t *testing.T) {
 	t.Parallel()

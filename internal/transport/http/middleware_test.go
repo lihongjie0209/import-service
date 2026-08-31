@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,8 +13,53 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lihongjie0209/import-service/internal/auth"
 	"github.com/lihongjie0209/import-service/internal/config"
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 )
+
+type authorizationStub struct{ err error }
+
+func (a authorizationStub) Authorize(context.Context, platformprincipal.Principal, platformauthz.Requirement) error {
+	return a.err
+}
+
+func TestImportHTTPRequirementCoversEveryBusinessRoute(t *testing.T) {
+	t.Parallel()
+	routes := []string{"/api/v1/imports/datasets/list", "/api/v1/imports/datasets/describe", "/api/v1/imports/create", "/api/v1/imports/complete-upload", "/api/v1/imports/get", "/api/v1/imports/list", "/api/v1/imports/cancel", "/api/v1/imports/retry", "/api/v1/imports/confirm", "/api/v1/imports/error-report"}
+	for _, route := range routes {
+		requirement, ok := importHTTPRequirement(route)
+		if !ok || requirement.Resource == "" || requirement.Action == "" {
+			t.Fatalf("route %q requirement = %+v, %v", route, requirement, ok)
+		}
+	}
+	if _, ok := importHTTPRequirement("/api/v1/version"); ok {
+		t.Fatal("version must not require a domain permission")
+	}
+}
+
+func TestAuthorizationFailsClosedAndClassifiesOutage(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{{"denied", platformauthz.ErrDenied, http.StatusForbidden}, {"unavailable", platformauthz.ErrDecisionUnavailable, http.StatusServiceUnavailable}} {
+		t.Run(test.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(RequestID(), func(c *gin.Context) {
+				c.Request = c.Request.WithContext(platformprincipal.WithContext(c.Request.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1", MembershipID: "membership-1"}))
+				c.Next()
+			}, Authorization(true, authorizationStub{test.err}, slog.New(slog.NewTextHandler(io.Discard, nil))))
+			router.POST("/api/v1/imports/get", func(c *gin.Context) { OK(c, nil) })
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/imports/get", nil))
+			if recorder.Code != test.status {
+				t.Fatalf("status = %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
 
 func TestRequestID(t *testing.T) {
 	t.Parallel()

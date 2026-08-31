@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lihongjie0209/import-service/internal/authorization"
 	"github.com/lihongjie0209/import-service/internal/cache"
 	"github.com/lihongjie0209/import-service/internal/config"
 	"github.com/lihongjie0209/import-service/internal/database"
@@ -40,6 +41,7 @@ func New(cfg config.Config) *fx.App {
 		fx.Provide(idempotency.New),
 		fx.Provide(observability.NewMetrics),
 		outbound.Module,
+		fx.Provide(authorization.New),
 		ImportModule,
 		ImportEventModule,
 		scheduler.Module,

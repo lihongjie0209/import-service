@@ -19,6 +19,7 @@ import (
 	"github.com/lihongjie0209/import-service/internal/importjob"
 	"github.com/lihongjie0209/import-service/internal/observability"
 	"github.com/lihongjie0209/import-service/internal/requestid"
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
@@ -40,11 +41,11 @@ type Server struct {
 	logger  *slog.Logger
 }
 
-func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, healthService *apphealth.Service, importService *importjob.Service, catalog *importjob.Catalog, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
+func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, authorizer platformauthz.Authorizer, healthService *apphealth.Service, importService *importjob.Service, catalog *importjob.Catalog, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
 	options := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(cfg.GRPC.MaxReceiveBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.ChainUnaryInterceptor(environmentInterceptor(cfg.Runtime.ActiveProfile), requestIDInterceptor, idempotencyInterceptor, recoveryInterceptor(logger), authInterceptor(authService, cfg.Auth), metricsInterceptor(metrics, logger)),
+		grpc.ChainUnaryInterceptor(environmentInterceptor(cfg.Runtime.ActiveProfile), requestIDInterceptor, idempotencyInterceptor, recoveryInterceptor(logger), authInterceptor(authService, cfg.Auth), platformauthz.UnaryServerInterceptor(authorizer, importGRPCRequirement(cfg.Authorization.Enabled)), metricsInterceptor(metrics, logger)),
 		grpc.ChainStreamInterceptor(environmentStreamInterceptor(cfg.Runtime.ActiveProfile), requestIDStreamInterceptor, idempotencyStreamInterceptor, recoveryStreamInterceptor(logger), authStreamInterceptor(authService, cfg.Auth), metricsStreamInterceptor(metrics, logger)),
 	}
 	if cfg.GRPC.TLS.Enabled {
@@ -63,6 +64,28 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, he
 	server := &Server{server: grpcServer, address: cfg.GRPC.Address, logger: logger}
 	lc.Append(fx.Hook{OnStart: server.start(cfg.GRPC.Enabled), OnStop: server.stop})
 	return server, nil
+}
+
+func importGRPCRequirement(enabled bool) platformauthz.GRPCResolver {
+	return func(method string) (platformauthz.Requirement, bool) {
+		if !enabled {
+			return platformauthz.Requirement{}, false
+		}
+		requirements := map[string]platformauthz.Requirement{
+			importv1.ImportService_ListImportDatasets_FullMethodName:             {Resource: "import.dataset", Action: "list"},
+			importv1.ImportService_DescribeAvailableImportDataset_FullMethodName: {Resource: "import.dataset", Action: "read"},
+			importv1.ImportService_CreateImportJob_FullMethodName:                {Resource: "import.job", Action: "create"},
+			importv1.ImportService_CompleteUpload_FullMethodName:                 {Resource: "import.job", Action: "upload"},
+			importv1.ImportService_GetImportJob_FullMethodName:                   {Resource: "import.job", Action: "read"},
+			importv1.ImportService_ListImportJobs_FullMethodName:                 {Resource: "import.job", Action: "list"},
+			importv1.ImportService_CancelImportJob_FullMethodName:                {Resource: "import.job", Action: "cancel"},
+			importv1.ImportService_RetryImportJob_FullMethodName:                 {Resource: "import.job", Action: "retry"},
+			importv1.ImportService_ConfirmImportJob_FullMethodName:               {Resource: "import.job", Action: "confirm"},
+			importv1.ImportService_CreateErrorReportDownloadURL_FullMethodName:   {Resource: "import.job", Action: "download-error"},
+		}
+		requirement, ok := requirements[method]
+		return requirement, ok
+	}
 }
 
 func (s *Server) start(enabled bool) func(context.Context) error {
