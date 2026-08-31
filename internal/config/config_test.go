@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,21 @@ func TestLoad_EnvironmentOverridesFile(t *testing.T) {
 	}
 	if cfg.HTTP.Address != "127.0.0.1:9090" {
 		t.Fatalf("HTTP.Address = %q, want %q", cfg.HTTP.Address, "127.0.0.1:9090")
+	}
+}
+
+func TestConfig_ProductionRequiresIdentityJWKS(t *testing.T) {
+	cfg, err := Load("../../config/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.App.Env = "production"
+	cfg.GRPC.Enabled = false
+	cfg.GRPC.ReflectionEnabled = false
+	cfg.Swagger.RequireAuth = true
+	cfg.Auth.JWKSURL = ""
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "production auth requires JWKS") {
+		t.Fatalf("Validate() error = %v, want production JWKS requirement", err)
 	}
 }
 

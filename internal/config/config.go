@@ -465,7 +465,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("event_bus.cleanup_interval", "1h")
 	v.SetDefault("event_bus.cleanup_batch_size", 1000)
 	v.SetDefault("auth.jwks_url", "")
-	v.SetDefault("auth.issuer", "")
+	v.SetDefault("auth.issuer", "identity-service")
 	v.SetDefault("auth.audience", "import-service")
 	v.SetDefault("cron.import_cleanup_spec", "0 0 * * * *")
 	v.SetDefault("cron.metadata_cleanup_spec", "0 30 * * * *")
@@ -569,6 +569,9 @@ func (c Config) Validate() error {
 	}
 	if c.App.Env == "production" && c.Swagger.Enabled && !c.Swagger.RequireAuth {
 		return errors.New("swagger.require_auth must be enabled in production")
+	}
+	if c.App.Env == "production" && (strings.TrimSpace(c.Auth.JWKSURL) == "" || strings.TrimSpace(c.Auth.Issuer) == "" || strings.TrimSpace(c.Auth.Audience) == "") {
+		return errors.New("production auth requires JWKS URL, issuer, and audience")
 	}
 	if (c.Auth.ClientID != "" || c.Auth.ClientSecret != "") && len(c.JWT.Secret) < 32 {
 		return errors.New("jwt.secret must contain at least 32 bytes when auth is enabled")
