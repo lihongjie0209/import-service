@@ -61,6 +61,18 @@ func TestConfigRejectsOutboxRetentionShorterThanReplayWindow(t *testing.T) {
 	}
 }
 
+func TestConfigRejectsMissingOutboxCleanupBatchSize(t *testing.T) {
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.EventBus.Enabled = true
+	cfg.EventBus.CleanupBatchSize = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want outbox cleanup validation error")
+	}
+}
+
 func TestConfigRejectsNonPositiveImportMetadataRetention(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
