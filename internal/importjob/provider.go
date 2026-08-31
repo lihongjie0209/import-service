@@ -51,9 +51,19 @@ type ApplyBatchResult struct {
 	Issues      []RowIssue
 }
 
+type ValidationSession interface {
+	ValidateBatch(ValidateBatchRequest) (ValidateBatchResult, error)
+	Close() error
+}
+
+type ApplySession interface {
+	ApplyBatch(ApplyBatchRequest) (ApplyBatchResult, error)
+	Close() error
+}
+
 type Provider interface {
 	ListDatasets(context.Context, string, int32, int32) ([]DatasetSummary, int64, error)
 	DescribeDataset(context.Context, string, string, string) (DatasetDescriptor, error)
-	ValidateBatch(context.Context, string, ValidateBatchRequest) (ValidateBatchResult, error)
-	ApplyBatch(context.Context, string, ApplyBatchRequest) (ApplyBatchResult, error)
+	OpenValidation(context.Context, string, string, string) (ValidationSession, error)
+	OpenApply(context.Context, string, string, string) (ApplySession, error)
 }

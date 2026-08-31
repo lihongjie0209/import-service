@@ -26,10 +26,12 @@ func TestBoundedWriterRejectsOutputPastLimit(t *testing.T) {
 }
 
 type providerStub struct {
-	validate func(ValidateBatchRequest) (ValidateBatchResult, error)
-	apply    func(ApplyBatchRequest) (ApplyBatchResult, error)
-	list     func(string, int32, int32) ([]DatasetSummary, int64, error)
-	describe func(string, string, string) (DatasetDescriptor, error)
+	validate         func(ValidateBatchRequest) (ValidateBatchResult, error)
+	apply            func(ApplyBatchRequest) (ApplyBatchResult, error)
+	list             func(string, int32, int32) ([]DatasetSummary, int64, error)
+	describe         func(string, string, string) (DatasetDescriptor, error)
+	validationOpened *int
+	applyOpened      *int
 }
 
 func (p providerStub) ListDatasets(_ context.Context, search string, page, size int32) ([]DatasetSummary, int64, error) {
@@ -45,18 +47,45 @@ func (p providerStub) DescribeDataset(_ context.Context, tenant, service, datase
 	return DatasetDescriptor{}, nil
 }
 
-func (p providerStub) ValidateBatch(_ context.Context, _ string, request ValidateBatchRequest) (ValidateBatchResult, error) {
-	return p.validate(request)
+func (p providerStub) OpenValidation(context.Context, string, string, string) (ValidationSession, error) {
+	if p.validationOpened != nil {
+		(*p.validationOpened)++
+	}
+	return validationSessionStub{validate: p.validate}, nil
 }
-func (p providerStub) ApplyBatch(_ context.Context, _ string, request ApplyBatchRequest) (ApplyBatchResult, error) {
-	return p.apply(request)
+func (p providerStub) OpenApply(context.Context, string, string, string) (ApplySession, error) {
+	if p.applyOpened != nil {
+		(*p.applyOpened)++
+	}
+	return applySessionStub{apply: p.apply}, nil
 }
+
+type validationSessionStub struct {
+	validate func(ValidateBatchRequest) (ValidateBatchResult, error)
+}
+
+func (s validationSessionStub) ValidateBatch(request ValidateBatchRequest) (ValidateBatchResult, error) {
+	return s.validate(request)
+}
+func (validationSessionStub) Close() error { return nil }
+
+type applySessionStub struct {
+	apply func(ApplyBatchRequest) (ApplyBatchResult, error)
+}
+
+func (s applySessionStub) ApplyBatch(request ApplyBatchRequest) (ApplyBatchResult, error) {
+	return s.apply(request)
+}
+func (applySessionStub) Close() error { return nil }
 
 func TestWorkerValidatesThenAppliesInBoundedBatches(t *testing.T) {
 	source := []byte("id,name\n1,A\n2,B\n")
 	repository := &fakeRepository{job: Job{ID: "job-1", TenantID: "tenant-1", DatasetCode: "users.accounts", ProviderService: "identity-service", Format: FormatCSV, Status: StatusQueued, SourceObjectKey: "source", NormalizedObjectKey: "normalized", ErrorReportObjectKey: "errors", SourceChecksum: checksum(source), Version: 2}}
 	storage := &fakeStorage{objects: map[string][]byte{"source": source}}
+	validationOpened, applyOpened := 0, 0
 	provider := providerStub{
+		validationOpened: &validationOpened,
+		applyOpened:      &applyOpened,
 		validate: func(request ValidateBatchRequest) (ValidateBatchResult, error) {
 			if len(request.Rows) > 1 {
 				t.Fatalf("validation batch size=%d", len(request.Rows))
@@ -83,6 +112,9 @@ func TestWorkerValidatesThenAppliesInBoundedBatches(t *testing.T) {
 	}
 	if repository.job.Status != StatusSucceeded || repository.job.AppliedRows != 2 {
 		t.Fatalf("job=%+v", repository.job)
+	}
+	if validationOpened != 1 || applyOpened != 1 {
+		t.Fatalf("validation streams=%d apply streams=%d", validationOpened, applyOpened)
 	}
 	if len(repository.events) != 2 || repository.events[0].Subject != "platform.import.job.validated.v1" || repository.events[1].Subject != "platform.import.job.succeeded.v1" {
 		t.Fatalf("events=%+v", repository.events)

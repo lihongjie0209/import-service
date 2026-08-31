@@ -1,10 +1,56 @@
 package importjob
 
 import (
+	"context"
+	"io"
 	"testing"
 
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
+	"google.golang.org/grpc/metadata"
 )
+
+type validationStreamStub struct {
+	sent      []*importv1.ValidateRowsRequest
+	responses []*importv1.ValidateRowsResponse
+	closed    int
+}
+
+func (s *validationStreamStub) Send(value *importv1.ValidateRowsRequest) error {
+	s.sent = append(s.sent, value)
+	return nil
+}
+func (s *validationStreamStub) Recv() (*importv1.ValidateRowsResponse, error) {
+	if len(s.responses) == 0 {
+		return nil, io.EOF
+	}
+	value := s.responses[0]
+	s.responses = s.responses[1:]
+	return value, nil
+}
+func (s *validationStreamStub) Header() (metadata.MD, error) { return nil, nil }
+func (s *validationStreamStub) Trailer() metadata.MD         { return nil }
+func (s *validationStreamStub) CloseSend() error             { s.closed++; return nil }
+func (s *validationStreamStub) Context() context.Context     { return context.Background() }
+func (s *validationStreamStub) SendMsg(any) error            { return nil }
+func (s *validationStreamStub) RecvMsg(any) error            { return nil }
+
+func TestValidationSessionReusesOneBidirectionalStream(t *testing.T) {
+	t.Parallel()
+	stream := &validationStreamStub{responses: []*importv1.ValidateRowsResponse{{BatchNumber: 1}, {BatchNumber: 2}}}
+	session := &grpcValidationSession{provider: &GRPCProvider{}, tenant: "tenant-1", dataset: "identity.users", stream: stream}
+	for batch := int64(1); batch <= 2; batch++ {
+		if _, err := session.ValidateBatch(ValidateBatchRequest{TenantID: "tenant-1", DatasetCode: "identity.users", JobID: "job-1", BatchNumber: batch, Rows: []map[string]any{{"email": "user@example.com"}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(stream.sent) != 2 || stream.closed != 0 {
+		t.Fatalf("sent=%d closed=%d", len(stream.sent), stream.closed)
+	}
+	if err := session.Close(); err != nil || stream.closed != 1 {
+		t.Fatalf("close count=%d err=%v", stream.closed, err)
+	}
+}
 
 func TestSupportsImportDatasetMetadata(t *testing.T) {
 	t.Parallel()

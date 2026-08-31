@@ -169,78 +169,116 @@ func NewProvider(lifecycle fx.Lifecycle, cfg config.Config, static *outbound.Reg
 	return provider, nil
 }
 
-func (p *GRPCProvider) ValidateBatch(ctx context.Context, service string, request ValidateBatchRequest) (ValidateBatchResult, error) {
-	client, instance, err := p.client(service, request.DatasetCode)
+type grpcValidationSession struct {
+	provider *GRPCProvider
+	instance *registryv1.ServiceInstance
+	tenant   string
+	dataset  string
+	stream   grpc.BidiStreamingClient[importv1.ValidateRowsRequest, importv1.ValidateRowsResponse]
+}
+
+func (p *GRPCProvider) OpenValidation(ctx context.Context, service, tenant, dataset string) (ValidationSession, error) {
+	client, instance, err := p.client(service, dataset)
 	if err != nil {
-		return ValidateBatchResult{}, err
+		return nil, err
 	}
 	stream, err := client.ValidateRows(ctx)
 	if err != nil {
 		p.failure(instance)
-		return ValidateBatchResult{}, err
+		return nil, err
+	}
+	return &grpcValidationSession{provider: p, instance: instance, tenant: tenant, dataset: dataset, stream: stream}, nil
+}
+
+func (s *grpcValidationSession) ValidateBatch(request ValidateBatchRequest) (ValidateBatchResult, error) {
+	if request.TenantID != s.tenant || request.DatasetCode != s.dataset {
+		return ValidateBatchResult{}, ErrInvalidProviderResponse
 	}
 	rows, err := protoRows(request.Rows)
 	if err != nil {
 		return ValidateBatchResult{}, err
 	}
-	if err := stream.Send(&importv1.ValidateRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, FirstRowNumber: request.FirstRowNumber, Rows: rows}); err != nil {
-		p.failure(instance)
+	if err := s.stream.Send(&importv1.ValidateRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, FirstRowNumber: request.FirstRowNumber, Rows: rows}); err != nil {
+		s.provider.failure(s.instance)
 		return ValidateBatchResult{}, err
 	}
-	if err := stream.CloseSend(); err != nil {
-		p.failure(instance)
-		return ValidateBatchResult{}, err
-	}
-	response, err := stream.Recv()
+	response, err := s.stream.Recv()
 	if err != nil {
-		p.failure(instance)
+		s.provider.failure(s.instance)
 		return ValidateBatchResult{}, err
 	}
 	if response.GetBatchNumber() != request.BatchNumber {
-		p.failure(instance)
+		s.provider.failure(s.instance)
 		return ValidateBatchResult{}, ErrInvalidProviderResponse
 	}
-	p.success(instance)
+	s.provider.success(s.instance)
 	return validationResult(response), nil
 }
 
-func (p *GRPCProvider) ApplyBatch(ctx context.Context, service string, request ApplyBatchRequest) (ApplyBatchResult, error) {
-	client, instance, err := p.client(service, request.DatasetCode)
+func (s *grpcValidationSession) Close() error {
+	err := s.stream.CloseSend()
 	if err != nil {
-		return ApplyBatchResult{}, err
+		s.provider.failure(s.instance)
+	}
+	return err
+}
+
+type grpcApplySession struct {
+	provider *GRPCProvider
+	instance *registryv1.ServiceInstance
+	tenant   string
+	dataset  string
+	stream   grpc.BidiStreamingClient[importv1.ApplyRowsRequest, importv1.ApplyRowsResponse]
+}
+
+func (p *GRPCProvider) OpenApply(ctx context.Context, service, tenant, dataset string) (ApplySession, error) {
+	client, instance, err := p.client(service, dataset)
+	if err != nil {
+		return nil, err
 	}
 	stream, err := client.ApplyRows(ctx)
 	if err != nil {
 		p.failure(instance)
-		return ApplyBatchResult{}, err
+		return nil, err
+	}
+	return &grpcApplySession{provider: p, instance: instance, tenant: tenant, dataset: dataset, stream: stream}, nil
+}
+
+func (s *grpcApplySession) ApplyBatch(request ApplyBatchRequest) (ApplyBatchResult, error) {
+	if request.TenantID != s.tenant || request.DatasetCode != s.dataset {
+		return ApplyBatchResult{}, ErrInvalidProviderResponse
 	}
 	rows, err := protoRows(request.Rows)
 	if err != nil {
 		return ApplyBatchResult{}, err
 	}
-	if err := stream.Send(&importv1.ApplyRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, Rows: rows, IdempotencyKey: request.IdempotencyKey}); err != nil {
-		p.failure(instance)
+	if err := s.stream.Send(&importv1.ApplyRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, Rows: rows, IdempotencyKey: request.IdempotencyKey}); err != nil {
+		s.provider.failure(s.instance)
 		return ApplyBatchResult{}, err
 	}
-	if err := stream.CloseSend(); err != nil {
-		p.failure(instance)
-		return ApplyBatchResult{}, err
-	}
-	response, err := stream.Recv()
+	response, err := s.stream.Recv()
 	if err != nil {
-		p.failure(instance)
+		s.provider.failure(s.instance)
 		return ApplyBatchResult{}, err
 	}
 	if response.GetBatchNumber() != request.BatchNumber {
-		p.failure(instance)
+		s.provider.failure(s.instance)
 		return ApplyBatchResult{}, ErrInvalidProviderResponse
 	}
 	issues := make([]RowIssue, len(response.GetIssues()))
 	for i, value := range response.GetIssues() {
 		issues[i] = RowIssue{RowNumber: value.GetRowNumber(), ColumnKey: value.GetColumnKey(), Code: value.GetCode(), Message: value.GetMessage()}
 	}
-	p.success(instance)
+	s.provider.success(s.instance)
 	return ApplyBatchResult{AppliedRows: response.GetAppliedRows(), Issues: issues}, nil
+}
+
+func (s *grpcApplySession) Close() error {
+	err := s.stream.CloseSend()
+	if err != nil {
+		s.provider.failure(s.instance)
+	}
+	return err
 }
 
 func (p *GRPCProvider) client(service, dataset string) (importv1.ImportProviderServiceClient, *registryv1.ServiceInstance, error) {
