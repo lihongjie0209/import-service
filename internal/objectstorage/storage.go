@@ -16,8 +16,9 @@ import (
 var ErrDisabled = errors.New("object storage is disabled")
 
 type S3 struct {
-	client *minio.Client
-	cfg    config.ObjectStorage
+	client        *minio.Client
+	presignClient *minio.Client
+	cfg           config.ObjectStorage
 }
 
 func New(cfg config.Config) (importjob.Storage, error) {
@@ -29,7 +30,14 @@ func New(cfg config.Config) (importjob.Storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &S3{client: client, cfg: c}, nil
+	presignClient := client
+	if c.PresignEndpoint != "" && (c.PresignEndpoint != c.Endpoint || c.PresignUseSSL != c.UseSSL) {
+		presignClient, err = minio.New(c.PresignEndpoint, &minio.Options{Creds: credentials.NewStaticV4(c.AccessKey, c.SecretKey, ""), Secure: c.PresignUseSSL, Region: c.Region})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &S3{client: client, presignClient: presignClient, cfg: c}, nil
 }
 
 func (s *S3) PresignUpload(ctx context.Context, key string, ttl time.Duration) (*url.URL, map[string]string, error) {
@@ -37,7 +45,7 @@ func (s *S3) PresignUpload(ctx context.Context, key string, ttl time.Duration) (
 		return nil, nil, ErrDisabled
 	}
 	ttl = s.presignTTL(ttl)
-	value, err := s.client.PresignedPutObject(ctx, s.cfg.Bucket, key, ttl)
+	value, err := s.presignClient.PresignedPutObject(ctx, s.cfg.Bucket, key, ttl)
 	return value, map[string]string{"Content-Type": "application/octet-stream"}, err
 }
 
@@ -45,7 +53,7 @@ func (s *S3) PresignDownload(ctx context.Context, key string, ttl time.Duration)
 	if !s.enabled() {
 		return nil, ErrDisabled
 	}
-	return s.client.PresignedGetObject(ctx, s.cfg.Bucket, key, s.presignTTL(ttl), nil)
+	return s.presignClient.PresignedGetObject(ctx, s.cfg.Bucket, key, s.presignTTL(ttl), nil)
 }
 
 func (s *S3) Stat(ctx context.Context, key string) (importjob.ObjectInfo, error) {

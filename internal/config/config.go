@@ -216,14 +216,16 @@ type Import struct {
 	MaxBytes   int64         `mapstructure:"max_bytes"`
 }
 type ObjectStorage struct {
-	Enabled    bool          `mapstructure:"enabled"`
-	Endpoint   string        `mapstructure:"endpoint"`
-	AccessKey  string        `mapstructure:"access_key"`
-	SecretKey  string        `mapstructure:"secret_key"`
-	Bucket     string        `mapstructure:"bucket"`
-	Region     string        `mapstructure:"region"`
-	UseSSL     bool          `mapstructure:"use_ssl"`
-	PresignTTL time.Duration `mapstructure:"presign_ttl"`
+	Enabled         bool          `mapstructure:"enabled"`
+	Endpoint        string        `mapstructure:"endpoint"`
+	PresignEndpoint string        `mapstructure:"presign_endpoint"`
+	AccessKey       string        `mapstructure:"access_key"`
+	SecretKey       string        `mapstructure:"secret_key"`
+	Bucket          string        `mapstructure:"bucket"`
+	Region          string        `mapstructure:"region"`
+	UseSSL          bool          `mapstructure:"use_ssl"`
+	PresignUseSSL   bool          `mapstructure:"presign_use_ssl"`
+	PresignTTL      time.Duration `mapstructure:"presign_ttl"`
 }
 type ServiceRegistry struct {
 	Enabled           bool          `mapstructure:"enabled"`
@@ -467,11 +469,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("import.max_bytes", 1<<30)
 	v.SetDefault("object_storage.enabled", false)
 	v.SetDefault("object_storage.endpoint", "127.0.0.1:9000")
+	v.SetDefault("object_storage.presign_endpoint", "")
 	v.SetDefault("object_storage.access_key", "")
 	v.SetDefault("object_storage.secret_key", "")
 	v.SetDefault("object_storage.bucket", "platform-imports")
 	v.SetDefault("object_storage.region", "")
 	v.SetDefault("object_storage.use_ssl", false)
+	v.SetDefault("object_storage.presign_use_ssl", false)
 	v.SetDefault("object_storage.presign_ttl", "15m")
 	v.SetDefault("service_registry.enabled", false)
 	v.SetDefault("service_registry.target", "127.0.0.1:9095")
@@ -614,6 +618,9 @@ func (c Config) Validate() error {
 	}
 	if c.ObjectStorage.Enabled && (c.ObjectStorage.Endpoint == "" || c.ObjectStorage.AccessKey == "" || c.ObjectStorage.SecretKey == "" || c.ObjectStorage.Bucket == "" || c.ObjectStorage.PresignTTL <= 0) {
 		return errors.New("enabled object_storage requires endpoint, credentials, bucket, and positive presign_ttl")
+	}
+	if c.ObjectStorage.Enabled && c.ObjectStorage.PresignEndpoint != "" && c.ObjectStorage.Region == "" {
+		return errors.New("object_storage.region is required with presign_endpoint")
 	}
 	if err := validateClientPolicy("provider_client", ClientAuth{}, c.ProviderClient.Retry, c.ProviderClient.Breaker, c.ProviderClient.TLS); err != nil {
 		return err
