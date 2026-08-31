@@ -39,6 +39,9 @@ func TestLoad_UsesCanonicalPlatformEventStreamDefaults(t *testing.T) {
 	if cfg.EventBus.DispatchInterval != time.Second || cfg.EventBus.DispatchBatchSize != 100 || cfg.EventBus.DispatchLease != 30*time.Second || cfg.EventBus.DispatchRetryDelay != 2*time.Second {
 		t.Fatalf("unexpected outbox dispatch defaults: %+v", cfg.EventBus)
 	}
+	if cfg.ProviderClient.Retry.MaxAttempts != 3 || cfg.ProviderClient.Retry.InitialBackoff != 100*time.Millisecond || cfg.ProviderClient.Retry.MaxBackoff != time.Second {
+		t.Fatalf("unexpected provider retry defaults: %+v", cfg.ProviderClient.Retry)
+	}
 }
 
 func TestConfig_ValidateJWTSecret(t *testing.T) {

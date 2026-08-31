@@ -36,12 +36,14 @@ uploading -> queued -> validating -> validation_failed -> uploading
 
 ## 服务间接口
 
-中央契约来自 `github.com/lihongjie0209/platform-protos@v0.17.0`：
+中央契约来自 `github.com/lihongjie0209/platform-protos@v0.18.0`：
 
 - `platform.import.v1.ImportService`：导入任务管理。
 - `platform.import.v1.ImportProviderService`：业务服务实现数据集描述、批次验证/规范化和幂等批次应用。
 
 Provider 必须在本服务内验证租户和调用者权限；`ApplyRows` 必须以 `job_id + batch_number` 或请求中的 idempotency key 建立持久幂等边界。禁止把整个文件加载到内存，也不能依赖 import-service 直接写业务表。
+
+Provider 流在注册中心启动竞争、实例摘除或临时 gRPC 故障时按 `provider_client.retry` 重建连接并重放当前批次。应用批次始终复用原始幂等键，因此 Provider 必须持久化该边界，不能只在内存去重。
 
 ## 数据与配置
 

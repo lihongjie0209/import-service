@@ -28,6 +28,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
@@ -65,7 +67,8 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 		JWT: config.JWT{Issuer: "integration", Secret: psk, TTL: time.Hour}, Auth: config.Auth{PSK: config.PSK{Enabled: true, Key: psk, HTTPPaths: []string{"/api/v1/imports/*"}}, SkipHTTPPaths: []string{"/api/v1/version"}, SkipGRPCMethods: []string{"/grpc.health.v1.Health/*"}},
 		Cron: config.Cron{Enabled: false, Timezone: "UTC"}, EventBus: config.EventBus{Enabled: true, URLs: []string{natsURL}, StreamName: "PLATFORM_EVENTS", Subjects: []string{"platform.>"}, Storage: "memory", MaxAge: time.Hour, DuplicateWindow: time.Minute, ConnectTimeout: 10 * time.Second, ReconnectWait: time.Second, PublishTimeout: 5 * time.Second, ConsumerAckWait: 2 * time.Minute, ConsumerMaxDeliver: 3, DispatchInterval: 20 * time.Millisecond, DispatchBatchSize: 10, DispatchLease: time.Minute, DispatchRetryDelay: 100 * time.Millisecond},
 		Import: config.Import{UploadTTL: time.Minute, ResultTTL: time.Hour, JobTimeout: time.Minute, BatchSize: 1, MaxRows: 100, MaxBytes: 1 << 20}, ObjectStorage: config.ObjectStorage{Enabled: true, Endpoint: endpoint, AccessKey: accessKey, SecretKey: secretKey, Bucket: "platform-imports", PresignTTL: time.Minute},
-		Outbound: config.Outbound{GRPC: map[string]config.GRPCUpstream{"test-provider": {Target: providerAddress, Timeout: 5 * time.Second, Retry: config.Retry{MaxAttempts: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}}}},
+		ProviderClient: config.ProviderClient{Retry: config.Retry{MaxAttempts: 3, InitialBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond}},
+		Outbound:       config.Outbound{GRPC: map[string]config.GRPCUpstream{"test-provider": {Target: providerAddress, Timeout: 5 * time.Second, Retry: config.Retry{MaxAttempts: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}}}},
 	}
 	application := app.New(cfg)
 	if err := application.Start(ctx); err != nil {
@@ -119,7 +122,7 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 		t.Fatalf("confirm status=%d body=%s", statusCode, confirmBody)
 	}
 	waitImportJob(t, baseURL, psk, created.Body.Job.ID, "succeeded")
-	if provider.validationStreams.Load() != 1 || provider.applyStreams.Load() != 1 || provider.applied() != 2 {
+	if provider.validationStreams.Load() != 2 || provider.applyStreams.Load() != 2 || provider.applied() != 2 {
 		t.Fatalf("validation streams=%d apply streams=%d applied=%d", provider.validationStreams.Load(), provider.applyStreams.Load(), provider.applied())
 	}
 }
@@ -156,6 +159,8 @@ type testImportProvider struct {
 	importv1.UnimplementedImportProviderServiceServer
 	validationStreams atomic.Int32
 	applyStreams      atomic.Int32
+	validationFailed  atomic.Bool
+	applyFailed       atomic.Bool
 	mu                sync.Mutex
 	appliedKeys       map[string]struct{}
 }
@@ -172,6 +177,9 @@ func (p *testImportProvider) ValidateRows(stream importv1.ImportProviderService_
 		}
 		if err != nil {
 			return err
+		}
+		if p.validationFailed.CompareAndSwap(false, true) {
+			return status.Error(codes.Unavailable, "transient validation failure")
 		}
 		if err := stream.Send(&importv1.ValidateRowsResponse{BatchNumber: request.GetBatchNumber(), NormalizedRows: request.GetRows()}); err != nil {
 			return err
@@ -192,6 +200,9 @@ func (p *testImportProvider) ApplyRows(stream importv1.ImportProviderService_App
 		_, duplicate := p.appliedKeys[request.GetIdempotencyKey()]
 		p.appliedKeys[request.GetIdempotencyKey()] = struct{}{}
 		p.mu.Unlock()
+		if p.applyFailed.CompareAndSwap(false, true) {
+			return status.Error(codes.Unavailable, "transient apply failure after commit")
+		}
 		applied := int64(len(request.GetRows()))
 		if duplicate {
 			applied = int64(len(request.GetRows()))

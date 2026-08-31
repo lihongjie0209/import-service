@@ -485,7 +485,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provider_client.timeout", "30s")
 	v.SetDefault("provider_client.failure_cooldown", "30s")
 	v.SetDefault("provider_client.allow_insecure", false)
-	v.SetDefault("provider_client.retry.max_attempts", 1)
+	v.SetDefault("provider_client.retry.max_attempts", 3)
 	v.SetDefault("provider_client.retry.initial_backoff", "100ms")
 	v.SetDefault("provider_client.retry.max_backoff", "1s")
 	v.SetDefault("provider_client.retry.methods", []string{})
@@ -614,6 +614,9 @@ func (c Config) Validate() error {
 	}
 	if c.ObjectStorage.Enabled && (c.ObjectStorage.Endpoint == "" || c.ObjectStorage.AccessKey == "" || c.ObjectStorage.SecretKey == "" || c.ObjectStorage.Bucket == "" || c.ObjectStorage.PresignTTL <= 0) {
 		return errors.New("enabled object_storage requires endpoint, credentials, bucket, and positive presign_ttl")
+	}
+	if err := validateClientPolicy("provider_client", ClientAuth{}, c.ProviderClient.Retry, c.ProviderClient.Breaker, c.ProviderClient.TLS); err != nil {
+		return err
 	}
 	if c.ServiceRegistry.Enabled {
 		if c.ServiceRegistry.Target == "" || len(c.ServiceRegistry.PSK) < 32 || c.ServiceRegistry.MaxStale <= 0 || c.ServiceRegistry.SnapshotDirectory == "" || len(c.ProviderClient.PSK) < 32 || len(c.ProviderClient.AllowedDNSSuffixes) == 0 || c.ProviderClient.Timeout <= 0 || c.ProviderClient.FailureCooldown <= 0 {
