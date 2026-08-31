@@ -60,6 +60,8 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, handler *Handler, authService
 	}, logger))
 	api.POST("/version", handler.Version)
 	imports := api.Group("/imports")
+	imports.POST("/datasets/list", handler.ListImportDatasets)
+	imports.POST("/datasets/describe", handler.DescribeImportDataset)
 	imports.POST("/create", handler.CreateImport)
 	imports.POST("/complete-upload", handler.CompleteUpload)
 	imports.POST("/get", handler.GetImport)

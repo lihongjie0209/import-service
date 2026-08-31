@@ -40,7 +40,7 @@ type Server struct {
 	logger  *slog.Logger
 }
 
-func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, healthService *apphealth.Service, importService *importjob.Service, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
+func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, healthService *apphealth.Service, importService *importjob.Service, catalog *importjob.Catalog, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
 	options := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(cfg.GRPC.MaxReceiveBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
@@ -55,7 +55,7 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, he
 		options = append(options, grpc.Creds(creds))
 	}
 	grpcServer := grpc.NewServer(options...)
-	importv1.RegisterImportServiceServer(grpcServer, &importServer{service: importService})
+	importv1.RegisterImportServiceServer(grpcServer, &importServer{service: importService, catalog: catalog})
 	grpc_health_v1.RegisterHealthServer(grpcServer, &healthServer{health: healthService})
 	if cfg.GRPC.ReflectionEnabled {
 		reflection.Register(grpcServer)

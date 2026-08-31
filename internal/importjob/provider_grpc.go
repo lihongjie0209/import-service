@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,94 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+func (p *GRPCProvider) ListDatasets(_ context.Context, search string, page, pageSize int32) ([]DatasetSummary, int64, error) {
+	if p.discovery == nil {
+		return []DatasetSummary{}, 0, nil
+	}
+	instances, err := p.discovery.Instances()
+	if err != nil {
+		return nil, 0, err
+	}
+	values := summarizeDatasets(instances, search)
+	page, pageSize = normalizeCatalogPage(page, pageSize)
+	start := int((page - 1) * pageSize)
+	if start >= len(values) {
+		return []DatasetSummary{}, int64(len(values)), nil
+	}
+	end := min(start+int(pageSize), len(values))
+	return values[start:end], int64(len(values)), nil
+}
+
+func (p *GRPCProvider) DescribeDataset(ctx context.Context, tenantID, service, dataset string) (DatasetDescriptor, error) {
+	client, instance, err := p.client(service, dataset)
+	if err != nil {
+		return DatasetDescriptor{}, err
+	}
+	response, err := client.DescribeImportDataset(ctx, &importv1.DescribeImportDatasetRequest{TenantId: tenantID, DatasetCode: dataset})
+	if err != nil {
+		p.failure(instance)
+		return DatasetDescriptor{}, err
+	}
+	value := response.GetDataset()
+	if value == nil || value.GetCode() != dataset {
+		p.failure(instance)
+		return DatasetDescriptor{}, ErrInvalidProviderResponse
+	}
+	columns := make([]ImportColumn, len(value.GetColumns()))
+	for i, column := range value.GetColumns() {
+		columns[i] = ImportColumn{Key: column.GetKey(), Title: column.GetTitle(), Type: column.GetType(), Required: column.GetRequired(), Description: column.GetDescription(), Example: column.GetExample(), Sensitive: column.GetSensitive()}
+	}
+	p.success(instance)
+	return DatasetDescriptor{Code: value.GetCode(), Title: value.GetTitle(), Columns: columns, Formats: value.GetFormats(), MaxBatchSize: value.GetMaxBatchSize(), SupportsDryRun: value.GetSupportsDryRun()}, nil
+}
+
+func summarizeDatasets(instances []*registryv1.ServiceInstance, search string) []DatasetSummary {
+	type key struct{ service, dataset string }
+	result := map[key]DatasetSummary{}
+	search = strings.ToLower(strings.TrimSpace(search))
+	for _, instance := range instances {
+		datasets, err := importprovider.ParseMetadata(instance.GetMetadata())
+		if err != nil {
+			continue
+		}
+		for _, dataset := range datasets {
+			if search != "" && !strings.Contains(strings.ToLower(dataset.Code+" "+dataset.Title+" "+instance.GetServiceName()), search) {
+				continue
+			}
+			currentKey := key{service: instance.GetServiceName(), dataset: dataset.Code}
+			current := result[currentKey]
+			if current.HealthyInstances == 0 {
+				current = DatasetSummary{ProviderService: instance.GetServiceName(), Code: dataset.Code, Title: dataset.Title, Formats: dataset.Formats, MaxBatchSize: dataset.MaxBatchSize, SupportsDryRun: dataset.SupportsDryRun}
+			}
+			current.HealthyInstances++
+			result[currentKey] = current
+		}
+	}
+	values := make([]DatasetSummary, 0, len(result))
+	for _, value := range result {
+		values = append(values, value)
+	}
+	slices.SortFunc(values, func(a, b DatasetSummary) int {
+		if compared := strings.Compare(a.ProviderService, b.ProviderService); compared != 0 {
+			return compared
+		}
+		return strings.Compare(a.Code, b.Code)
+	})
+	return values
+}
+
+func normalizeCatalogPage(page, pageSize int32) (int32, int32) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	} else if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize
+}
 
 type providerConnection struct {
 	target     string

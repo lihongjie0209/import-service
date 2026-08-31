@@ -28,6 +28,21 @@ func TestBoundedWriterRejectsOutputPastLimit(t *testing.T) {
 type providerStub struct {
 	validate func(ValidateBatchRequest) (ValidateBatchResult, error)
 	apply    func(ApplyBatchRequest) (ApplyBatchResult, error)
+	list     func(string, int32, int32) ([]DatasetSummary, int64, error)
+	describe func(string, string, string) (DatasetDescriptor, error)
+}
+
+func (p providerStub) ListDatasets(_ context.Context, search string, page, size int32) ([]DatasetSummary, int64, error) {
+	if p.list != nil {
+		return p.list(search, page, size)
+	}
+	return nil, 0, nil
+}
+func (p providerStub) DescribeDataset(_ context.Context, tenant, service, dataset string) (DatasetDescriptor, error) {
+	if p.describe != nil {
+		return p.describe(tenant, service, dataset)
+	}
+	return DatasetDescriptor{}, nil
 }
 
 func (p providerStub) ValidateBatch(_ context.Context, _ string, request ValidateBatchRequest) (ValidateBatchResult, error) {

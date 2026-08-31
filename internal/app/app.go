@@ -128,4 +128,4 @@ func newImportWorker(repository importjob.Repository, transactor *database.Trans
 	return importjob.NewWorker(repository, transactor, storage, provider, cfg.Import.BatchSize, cfg.Import.MaxRows, cfg.Import.MaxBytes, cfg.Import.JobTimeout, cfg.Import.ResultTTL)
 }
 
-var ImportModule = fx.Module("import", fx.Provide(objectstorage.New, importjob.NewRepository, importjob.NewProvider, newImportService, newImportWorker))
+var ImportModule = fx.Module("import", fx.Provide(objectstorage.New, importjob.NewRepository, importjob.NewProvider, importjob.NewCatalog, newImportService, newImportWorker))

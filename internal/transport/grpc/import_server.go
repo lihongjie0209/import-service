@@ -17,6 +17,30 @@ import (
 type importServer struct {
 	importv1.UnimplementedImportServiceServer
 	service *importjob.Service
+	catalog *importjob.Catalog
+}
+
+func (s *importServer) ListImportDatasets(ctx context.Context, r *importv1.ListImportDatasetsRequest) (*importv1.ListImportDatasetsResponse, error) {
+	page, size := int32(0), int32(0)
+	if r.GetPage() != nil {
+		page, size = int32(r.GetPage().GetPage()), int32(r.GetPage().GetPageSize())
+	}
+	values, total, page, size, err := s.catalog.List(ctx, r.GetTenantId(), r.GetSearch(), page, size)
+	items := make([]*importv1.ImportDatasetSummary, len(values))
+	for i, value := range values {
+		items[i] = &importv1.ImportDatasetSummary{ProviderService: value.ProviderService, Code: value.Code, Title: value.Title, Formats: value.Formats, MaxBatchSize: value.MaxBatchSize, SupportsDryRun: value.SupportsDryRun, HealthyInstances: value.HealthyInstances}
+	}
+	return &importv1.ListImportDatasetsResponse{Datasets: items, Page: &commonv1.PageResult{Total: uint64(total), Page: uint32(page), PageSize: uint32(size)}}, importError(err)
+}
+
+func (s *importServer) DescribeAvailableImportDataset(ctx context.Context, r *importv1.DescribeAvailableImportDatasetRequest) (*importv1.DescribeAvailableImportDatasetResponse, error) {
+	value, err := s.catalog.Describe(ctx, r.GetTenantId(), r.GetProviderService(), r.GetDatasetCode())
+	columns := make([]*importv1.ImportColumn, len(value.Columns))
+	for i, column := range value.Columns {
+		columns[i] = &importv1.ImportColumn{Key: column.Key, Title: column.Title, Type: column.Type, Required: column.Required, Description: column.Description, Example: column.Example, Sensitive: column.Sensitive}
+	}
+	dataset := &importv1.ImportDatasetDescriptor{Code: value.Code, Title: value.Title, Columns: columns, Formats: value.Formats, MaxBatchSize: value.MaxBatchSize, SupportsDryRun: value.SupportsDryRun}
+	return &importv1.DescribeAvailableImportDatasetResponse{Dataset: dataset}, importError(err)
 }
 
 func (s *importServer) CreateImportJob(ctx context.Context, r *importv1.CreateImportJobRequest) (*importv1.CreateImportJobResponse, error) {

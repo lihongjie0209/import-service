@@ -2,6 +2,29 @@ package importjob
 
 import "context"
 
+type DatasetSummary struct {
+	ProviderService  string   `json:"provider_service"`
+	Code             string   `json:"code"`
+	Title            string   `json:"title"`
+	Formats          []string `json:"formats"`
+	MaxBatchSize     int32    `json:"max_batch_size"`
+	SupportsDryRun   bool     `json:"supports_dry_run"`
+	HealthyInstances int32    `json:"healthy_instances"`
+}
+
+type ImportColumn struct {
+	Key, Title, Type, Description, Example string
+	Required, Sensitive                    bool
+}
+
+type DatasetDescriptor struct {
+	Code, Title    string
+	Columns        []ImportColumn
+	Formats        []string
+	MaxBatchSize   int32
+	SupportsDryRun bool
+}
+
 type RowIssue struct {
 	RowNumber int64
 	ColumnKey string
@@ -29,6 +52,8 @@ type ApplyBatchResult struct {
 }
 
 type Provider interface {
+	ListDatasets(context.Context, string, int32, int32) ([]DatasetSummary, int64, error)
+	DescribeDataset(context.Context, string, string, string) (DatasetDescriptor, error)
 	ValidateBatch(context.Context, string, ValidateBatchRequest) (ValidateBatchResult, error)
 	ApplyBatch(context.Context, string, ApplyBatchRequest) (ApplyBatchResult, error)
 }

@@ -120,8 +120,10 @@ func (s *Service) List(ctx context.Context, filter ListFilter) (Page, error) {
 	if filter.Page < 1 {
 		filter.Page = 1
 	}
-	if filter.PageSize < 1 || filter.PageSize > 100 {
+	if filter.PageSize < 1 {
 		filter.PageSize = 20
+	} else if filter.PageSize > 100 {
+		filter.PageSize = 100
 	}
 	page, err := s.repository.List(ctx, filter)
 	return page, translate(err)

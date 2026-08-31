@@ -15,10 +15,23 @@ type Handler struct {
 	logger  *slog.Logger
 	health  *health.Service
 	imports *importjob.Service
+	catalog *importjob.Catalog
 }
 
-func NewHandler(healthService *health.Service, importService *importjob.Service, logger *slog.Logger) *Handler {
-	return &Handler{health: healthService, imports: importService, logger: logger}
+func NewHandler(healthService *health.Service, importService *importjob.Service, catalog *importjob.Catalog, logger *slog.Logger) *Handler {
+	return &Handler{health: healthService, imports: importService, catalog: catalog, logger: logger}
+}
+
+type ListImportDatasetsRequest struct {
+	TenantID string `json:"tenant_id"`
+	Search   string `json:"search"`
+	Page     int32  `json:"page"`
+	PageSize int32  `json:"page_size"`
+}
+type DescribeImportDatasetRequest struct {
+	TenantID        string `json:"tenant_id"`
+	ProviderService string `json:"provider_service"`
+	DatasetCode     string `json:"dataset_code"`
 }
 
 type CreateImportRequest struct {
@@ -102,6 +115,50 @@ func (h *Handler) bind(c *gin.Context, target any) bool {
 		return false
 	}
 	return true
+}
+
+// @Summary Search available import datasets
+// @Tags imports
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Security PSK
+// @Param request body ListImportDatasetsRequest true "Search and pagination"
+// @Success 200 {object} Response
+// @Router /api/v1/imports/datasets/list [post]
+func (h *Handler) ListImportDatasets(c *gin.Context) {
+	var r ListImportDatasetsRequest
+	if !h.bind(c, &r) {
+		return
+	}
+	items, total, page, pageSize, err := h.catalog.List(c.Request.Context(), r.TenantID, r.Search, r.Page, r.PageSize)
+	if err != nil {
+		Fail(c, h.logger, err)
+		return
+	}
+	OK(c, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize})
+}
+
+// @Summary Describe an available import dataset
+// @Tags imports
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Security PSK
+// @Param request body DescribeImportDatasetRequest true "Provider and dataset"
+// @Success 200 {object} Response
+// @Router /api/v1/imports/datasets/describe [post]
+func (h *Handler) DescribeImportDataset(c *gin.Context) {
+	var r DescribeImportDatasetRequest
+	if !h.bind(c, &r) {
+		return
+	}
+	value, err := h.catalog.Describe(c.Request.Context(), r.TenantID, r.ProviderService, r.DatasetCode)
+	if err != nil {
+		Fail(c, h.logger, err)
+		return
+	}
+	OK(c, value)
 }
 
 // @Summary Create an import job and upload URL
@@ -189,7 +246,20 @@ func (h *Handler) ListImports(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"items": page.Items, "total": page.Total, "page": r.Page, "page_size": r.PageSize})
+	number, size := normalizePage(r.Page, r.PageSize)
+	OK(c, gin.H{"items": page.Items, "total": page.Total, "page": number, "page_size": size})
+}
+
+func normalizePage(page, size int32) (int32, int32) {
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	} else if size > 100 {
+		size = 100
+	}
+	return page, size
 }
 
 // @Summary Cancel an import with optimistic locking

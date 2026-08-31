@@ -68,6 +68,15 @@ definitions:
       tenant_id:
         type: string
     type: object
+  httptransport.DescribeImportDatasetRequest:
+    properties:
+      dataset_code:
+        type: string
+      provider_service:
+        type: string
+      tenant_id:
+        type: string
+    type: object
   httptransport.ErrorReportRequest:
     properties:
       id:
@@ -80,6 +89,17 @@ definitions:
   httptransport.ImportSelector:
     properties:
       id:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.ListImportDatasetsRequest:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      search:
         type: string
       tenant_id:
         type: string
@@ -233,6 +253,54 @@ paths:
       - Bearer: []
       - PSK: []
       summary: Create an import job and upload URL
+      tags:
+      - imports
+  /api/v1/imports/datasets/describe:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Provider and dataset
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.DescribeImportDatasetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Describe an available import dataset
+      tags:
+      - imports
+  /api/v1/imports/datasets/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Search and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.ListImportDatasetsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Search available import datasets
       tags:
       - imports
   /api/v1/imports/error-report:

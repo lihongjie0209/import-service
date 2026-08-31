@@ -179,6 +179,88 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/imports/datasets/describe": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "PSK": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "imports"
+                ],
+                "summary": "Describe an available import dataset",
+                "parameters": [
+                    {
+                        "description": "Provider and dataset",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httptransport.DescribeImportDatasetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httptransport.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/imports/datasets/list": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "PSK": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "imports"
+                ],
+                "summary": "Search available import datasets",
+                "parameters": [
+                    {
+                        "description": "Search and pagination",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httptransport.ListImportDatasetsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httptransport.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/imports/error-report": {
             "post": {
                 "security": [
@@ -561,6 +643,20 @@ const docTemplate = `{
                 }
             }
         },
+        "httptransport.DescribeImportDatasetRequest": {
+            "type": "object",
+            "properties": {
+                "dataset_code": {
+                    "type": "string"
+                },
+                "provider_service": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
         "httptransport.ErrorReportRequest": {
             "type": "object",
             "properties": {
@@ -579,6 +675,23 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "id": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httptransport.ListImportDatasetsRequest": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "search": {
                     "type": "string"
                 },
                 "tenant_id": {
