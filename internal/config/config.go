@@ -208,6 +208,9 @@ type EventBus struct {
 	DispatchBatchSize  int           `mapstructure:"dispatch_batch_size"`
 	DispatchLease      time.Duration `mapstructure:"dispatch_lease"`
 	DispatchRetryDelay time.Duration `mapstructure:"dispatch_retry_delay"`
+	PublishedRetention time.Duration `mapstructure:"published_retention"`
+	CleanupInterval    time.Duration `mapstructure:"cleanup_interval"`
+	CleanupBatchSize   int           `mapstructure:"cleanup_batch_size"`
 }
 type Import struct {
 	UploadTTL  time.Duration `mapstructure:"upload_ttl"`
@@ -458,6 +461,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("event_bus.dispatch_batch_size", 100)
 	v.SetDefault("event_bus.dispatch_lease", "30s")
 	v.SetDefault("event_bus.dispatch_retry_delay", "2s")
+	v.SetDefault("event_bus.published_retention", "168h")
+	v.SetDefault("event_bus.cleanup_interval", "1h")
+	v.SetDefault("event_bus.cleanup_batch_size", 1000)
 	v.SetDefault("auth.jwks_url", "")
 	v.SetDefault("auth.issuer", "")
 	v.SetDefault("auth.audience", "import-service")
@@ -608,8 +614,8 @@ func (c Config) Validate() error {
 	if c.Idempotency.Enabled && (!c.Redis.Enabled || c.Idempotency.ProcessingTTL <= 0 || c.Idempotency.ResultTTL <= 0 || c.Idempotency.FailureTTL <= 0) {
 		return errors.New("enabled idempotency requires redis and positive TTL values")
 	}
-	if c.EventBus.Enabled && (len(c.EventBus.URLs) == 0 || c.EventBus.StreamName == "" || len(c.EventBus.Subjects) != 1 || c.EventBus.Subjects[0] != "platform.>" || (c.EventBus.Storage != "file" && c.EventBus.Storage != "memory") || c.EventBus.MaxAge <= 0 || c.EventBus.DuplicateWindow <= 0 || c.EventBus.ConnectTimeout <= 0 || c.EventBus.ReconnectWait <= 0 || c.EventBus.PublishTimeout <= 0 || c.EventBus.ConsumerAckWait <= 0 || c.EventBus.ConsumerMaxDeliver <= 0 || c.EventBus.DispatchInterval <= 0 || c.EventBus.DispatchBatchSize <= 0 || c.EventBus.DispatchLease <= 0 || c.EventBus.DispatchRetryDelay <= 0) {
-		return errors.New("enabled event_bus requires URLs, stream, canonical platform.> subjects, valid storage, positive timeouts, delivery, and dispatch settings")
+	if c.EventBus.Enabled && (len(c.EventBus.URLs) == 0 || c.EventBus.StreamName == "" || len(c.EventBus.Subjects) != 1 || c.EventBus.Subjects[0] != "platform.>" || (c.EventBus.Storage != "file" && c.EventBus.Storage != "memory") || c.EventBus.MaxAge <= 0 || c.EventBus.DuplicateWindow <= 0 || c.EventBus.ConnectTimeout <= 0 || c.EventBus.ReconnectWait <= 0 || c.EventBus.PublishTimeout <= 0 || c.EventBus.ConsumerAckWait <= 0 || c.EventBus.ConsumerMaxDeliver <= 0 || c.EventBus.DispatchInterval <= 0 || c.EventBus.DispatchBatchSize <= 0 || c.EventBus.DispatchLease <= 0 || c.EventBus.DispatchRetryDelay <= 0 || c.EventBus.PublishedRetention < c.EventBus.MaxAge || c.EventBus.CleanupInterval <= 0 || c.EventBus.CleanupBatchSize <= 0) {
+		return errors.New("enabled event_bus requires URLs, stream, canonical platform.> subjects, valid storage, positive delivery/dispatch/cleanup settings, and published retention at least max_age")
 	}
 	if c.Import.UploadTTL <= 0 || c.Import.ResultTTL <= 0 || c.Import.JobTimeout <= 0 || c.Import.BatchSize < 1 || c.Import.BatchSize > 10000 || c.Import.MaxRows < 1 || c.Import.MaxBytes < 1 {
 		return errors.New("import requires positive TTLs, timeout, limits, and batch_size between 1 and 10000")

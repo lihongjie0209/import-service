@@ -56,12 +56,33 @@ func (r *importEventRuntime) start(context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
+	cleaner, err := platformoutbox.NewRetentionCleaner(r.store, platformoutbox.RetentionConfig{Retention: r.cfg.EventBus.PublishedRetention, BatchSize: r.cfg.EventBus.CleanupBatchSize})
+	if err != nil {
+		cancel()
+		return err
+	}
 	r.wg.Go(func() {
 		ticker := time.NewTicker(r.cfg.EventBus.DispatchInterval)
 		defer ticker.Stop()
 		for {
 			if _, runErr := dispatcher.RunOnce(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
 				r.logger.ErrorContext(ctx, "dispatch import outbox failed", "error", runErr)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	})
+	r.wg.Go(func() {
+		ticker := time.NewTicker(r.cfg.EventBus.CleanupInterval)
+		defer ticker.Stop()
+		for {
+			if deleted, runErr := cleaner.RunOnce(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
+				r.logger.ErrorContext(ctx, "clean published import outbox events", "error", runErr)
+			} else if deleted > 0 {
+				r.logger.InfoContext(ctx, "published import outbox events cleaned", "deleted", deleted)
 			}
 			select {
 			case <-ctx.Done():

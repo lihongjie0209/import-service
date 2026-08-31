@@ -39,11 +39,25 @@ func TestLoad_UsesCanonicalPlatformEventStreamDefaults(t *testing.T) {
 	if cfg.EventBus.DispatchInterval != time.Second || cfg.EventBus.DispatchBatchSize != 100 || cfg.EventBus.DispatchLease != 30*time.Second || cfg.EventBus.DispatchRetryDelay != 2*time.Second {
 		t.Fatalf("unexpected outbox dispatch defaults: %+v", cfg.EventBus)
 	}
+	if cfg.EventBus.PublishedRetention != 7*24*time.Hour || cfg.EventBus.CleanupInterval != time.Hour || cfg.EventBus.CleanupBatchSize != 1000 {
+		t.Fatalf("unexpected outbox cleanup defaults: %+v", cfg.EventBus)
+	}
 	if cfg.ProviderClient.Retry.MaxAttempts != 3 || cfg.ProviderClient.Retry.InitialBackoff != 100*time.Millisecond || cfg.ProviderClient.Retry.MaxBackoff != time.Second {
 		t.Fatalf("unexpected provider retry defaults: %+v", cfg.ProviderClient.Retry)
 	}
 	if cfg.Cron.ImportCleanupSpec != "0 0 * * * *" || cfg.Cron.MetadataCleanupSpec != "0 30 * * * *" || cfg.Cron.MetadataRetention != 365*24*time.Hour || cfg.Cron.CleanupBatchSize != 100 {
 		t.Fatalf("unexpected import cleanup defaults: %+v", cfg.Cron)
+	}
+}
+
+func TestConfigRejectsOutboxRetentionShorterThanReplayWindow(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("event_bus:\n  enabled: true\n  max_age: 168h\n  published_retention: 24h\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() error = nil, want outbox retention validation error")
 	}
 }
 
