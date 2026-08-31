@@ -1,0 +1,408 @@
+basePath: /
+definitions:
+  buildinfo.Info:
+    properties:
+      build_time:
+        type: string
+      commit:
+        type: string
+      started_at:
+        type: string
+      uptime:
+        type: string
+      version:
+        type: string
+    type: object
+  health.Dependency:
+    properties:
+      latency:
+        type: string
+      status:
+        type: string
+    type: object
+  health.Status:
+    properties:
+      dependencies:
+        additionalProperties:
+          $ref: '#/definitions/health.Dependency'
+        type: object
+      status:
+        type: string
+    type: object
+  httptransport.CompleteUploadRequest:
+    properties:
+      id:
+        type: string
+      source_bytes:
+        type: integer
+      source_checksum:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.ConfirmImportRequest:
+    properties:
+      id:
+        type: string
+      idempotency_key:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.CreateImportRequest:
+    properties:
+      dataset_code:
+        type: string
+      filename:
+        type: string
+      format:
+        type: string
+      idempotency_key:
+        type: string
+      provider_service:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.ErrorReportRequest:
+    properties:
+      id:
+        type: string
+      tenant_id:
+        type: string
+      ttl_seconds:
+        type: integer
+    type: object
+  httptransport.ImportSelector:
+    properties:
+      id:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.ListImportsRequest:
+    properties:
+      created_from:
+        type: string
+      created_to:
+        type: string
+      dataset_code:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      status:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.Response:
+    properties:
+      body: {}
+      code:
+        type: integer
+      message:
+        type: string
+      request_id:
+        type: string
+    type: object
+  httptransport.RetryImportRequest:
+    properties:
+      id:
+        type: string
+      idempotency_key:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.VersionedImportRequest:
+    properties:
+      id:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: 'Production-oriented Go Web API scaffold. Application error codes:
+    0 success; 10000-19999 common/input; 20000-29999 authentication/authorization;
+    30000-39999 business; 50000-59999 infrastructure.'
+  title: Go API Template
+  version: "1.0"
+paths:
+  /api/v1/imports/cancel:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Job and current version
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.VersionedImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Cancel an import with optimistic locking
+      tags:
+      - imports
+  /api/v1/imports/complete-upload:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Uploaded object metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.CompleteUploadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Verify upload and enqueue validation
+      tags:
+      - imports
+  /api/v1/imports/confirm:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Confirmation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.ConfirmImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Confirm a fully validated import
+      tags:
+      - imports
+  /api/v1/imports/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Import definition
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.CreateImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Create an import job and upload URL
+      tags:
+      - imports
+  /api/v1/imports/error-report:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Download request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.ErrorReportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Create a validation error report URL
+      tags:
+      - imports
+  /api/v1/imports/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Job selector
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.ImportSelector'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Get an import job
+      tags:
+      - imports
+  /api/v1/imports/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.ListImportsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Search import jobs
+      tags:
+      - imports
+  /api/v1/imports/retry:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Retry request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.RetryImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      - PSK: []
+      summary: Upload a corrected file and retry validation
+      tags:
+      - imports
+  /api/v1/version:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/buildinfo.Info'
+              type: object
+      summary: Return build and runtime version information
+      tags:
+      - operations
+  /live:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+      summary: Check process liveness
+      tags:
+      - operations
+  /ready:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+      summary: Check database and Redis readiness
+      tags:
+      - operations
+schemes:
+- http
+- https
+securityDefinitions:
+  Bearer:
+    description: Enter "Bearer {JWT}".
+    in: header
+    name: Authorization
+    type: apiKey
+  PSK:
+    description: Enter "PSK {shared-key}" for routes configured with PSK authentication.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

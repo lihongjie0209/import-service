@@ -1,0 +1,284 @@
+package importjob
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/lihongjie0209/import-service/internal/config"
+	"github.com/lihongjie0209/import-service/internal/grpcclient"
+	"github.com/lihongjie0209/import-service/internal/observability"
+	"github.com/lihongjie0209/import-service/internal/outbound"
+	"github.com/lihongjie0209/microservice-platform-go/importprovider"
+	"github.com/lihongjie0209/microservice-platform-go/serviceregistry"
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
+	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
+)
+
+type providerConnection struct {
+	target     string
+	connection *grpc.ClientConn
+}
+
+type GRPCProvider struct {
+	static             *outbound.Registry
+	config             config.ProviderClient
+	discovery          *serviceregistry.Discovery
+	registryConnection *grpc.ClientConn
+	mu                 sync.Mutex
+	connections        map[string]providerConnection
+	cursor             atomic.Uint64
+	dial               func(grpcclient.Config) (*grpc.ClientConn, error)
+	metrics            *observability.Metrics
+}
+
+func NewProvider(lifecycle fx.Lifecycle, cfg config.Config, static *outbound.Registry, metrics *observability.Metrics) (Provider, error) {
+	provider := &GRPCProvider{static: static, config: cfg.ProviderClient, connections: map[string]providerConnection{}, dial: grpcclient.Dial, metrics: metrics}
+	if cfg.ServiceRegistry.Enabled {
+		connection, err := grpcclient.Dial(grpcclient.Config{
+			Name: "service-registry-service", Target: cfg.ServiceRegistry.Target, Timeout: 3 * time.Second, PSK: cfg.ServiceRegistry.PSK,
+			TLS: grpcclient.TLSConfig{Enabled: cfg.ServiceRegistry.TLS.Enabled, ServerName: cfg.ServiceRegistry.TLS.ServerName, CAFile: cfg.ServiceRegistry.TLS.CAFile, CertFile: cfg.ServiceRegistry.TLS.CertFile, KeyFile: cfg.ServiceRegistry.TLS.KeyFile, AllowInsecureToken: cfg.ServiceRegistry.AllowInsecure},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("dial service registry: %w", err)
+		}
+		provider.registryConnection = connection
+		discovery, err := serviceregistry.NewDiscovery(
+			registryv1.NewRegistryServiceClient(connection),
+			serviceregistry.DiscoveryConfig{Selector: map[string]string{importprovider.ProviderMetadataKey: "true"}, MaxStale: cfg.ServiceRegistry.MaxStale, SnapshotStore: serviceregistry.FileSnapshotStore{Directory: cfg.ServiceRegistry.SnapshotDirectory}},
+		)
+		if err != nil {
+			_ = connection.Close()
+			return nil, err
+		}
+		provider.discovery = discovery
+		var cancel context.CancelFunc
+		lifecycle.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				runCtx, stop := context.WithCancel(context.Background())
+				cancel = stop
+				go func() { _ = discovery.Run(runCtx) }()
+				return nil
+			},
+			OnStop: func(context.Context) error {
+				if cancel != nil {
+					cancel()
+				}
+				return nil
+			},
+		})
+	}
+	lifecycle.Append(fx.StopHook(func() error { return provider.Close() }))
+	return provider, nil
+}
+
+func (p *GRPCProvider) ValidateBatch(ctx context.Context, service string, request ValidateBatchRequest) (ValidateBatchResult, error) {
+	client, instance, err := p.client(service, request.DatasetCode)
+	if err != nil {
+		return ValidateBatchResult{}, err
+	}
+	stream, err := client.ValidateRows(ctx)
+	if err != nil {
+		p.failure(instance)
+		return ValidateBatchResult{}, err
+	}
+	rows, err := protoRows(request.Rows)
+	if err != nil {
+		return ValidateBatchResult{}, err
+	}
+	if err := stream.Send(&importv1.ValidateRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, FirstRowNumber: request.FirstRowNumber, Rows: rows}); err != nil {
+		p.failure(instance)
+		return ValidateBatchResult{}, err
+	}
+	if err := stream.CloseSend(); err != nil {
+		p.failure(instance)
+		return ValidateBatchResult{}, err
+	}
+	response, err := stream.Recv()
+	if err != nil {
+		p.failure(instance)
+		return ValidateBatchResult{}, err
+	}
+	if response.GetBatchNumber() != request.BatchNumber {
+		p.failure(instance)
+		return ValidateBatchResult{}, ErrInvalidProviderResponse
+	}
+	p.success(instance)
+	return validationResult(response), nil
+}
+
+func (p *GRPCProvider) ApplyBatch(ctx context.Context, service string, request ApplyBatchRequest) (ApplyBatchResult, error) {
+	client, instance, err := p.client(service, request.DatasetCode)
+	if err != nil {
+		return ApplyBatchResult{}, err
+	}
+	stream, err := client.ApplyRows(ctx)
+	if err != nil {
+		p.failure(instance)
+		return ApplyBatchResult{}, err
+	}
+	rows, err := protoRows(request.Rows)
+	if err != nil {
+		return ApplyBatchResult{}, err
+	}
+	if err := stream.Send(&importv1.ApplyRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, Rows: rows, IdempotencyKey: request.IdempotencyKey}); err != nil {
+		p.failure(instance)
+		return ApplyBatchResult{}, err
+	}
+	if err := stream.CloseSend(); err != nil {
+		p.failure(instance)
+		return ApplyBatchResult{}, err
+	}
+	response, err := stream.Recv()
+	if err != nil {
+		p.failure(instance)
+		return ApplyBatchResult{}, err
+	}
+	if response.GetBatchNumber() != request.BatchNumber {
+		p.failure(instance)
+		return ApplyBatchResult{}, ErrInvalidProviderResponse
+	}
+	issues := make([]RowIssue, len(response.GetIssues()))
+	for i, value := range response.GetIssues() {
+		issues[i] = RowIssue{RowNumber: value.GetRowNumber(), ColumnKey: value.GetColumnKey(), Code: value.GetCode(), Message: value.GetMessage()}
+	}
+	p.success(instance)
+	return ApplyBatchResult{AppliedRows: response.GetAppliedRows(), Issues: issues}, nil
+}
+
+func (p *GRPCProvider) client(service, dataset string) (importv1.ImportProviderServiceClient, *registryv1.ServiceInstance, error) {
+	if p.discovery == nil {
+		connection, ok := p.static.GRPC(service)
+		if !ok {
+			return nil, nil, fmt.Errorf("import provider %q is not configured", service)
+		}
+		return importv1.NewImportProviderServiceClient(connection), nil, nil
+	}
+	instances, err := p.discovery.Instances()
+	if err != nil {
+		return nil, nil, err
+	}
+	candidates := make([]*registryv1.ServiceInstance, 0)
+	for _, instance := range instances {
+		if instance.GetServiceName() == service && supportsImportDataset(instance.Metadata, dataset) {
+			candidates = append(candidates, instance)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, nil, fmt.Errorf("import provider %q with dataset %q is not registered", service, dataset)
+	}
+	instance := candidates[(p.cursor.Add(1)-1)%uint64(len(candidates))]
+	target := strings.TrimPrefix(strings.TrimPrefix(instance.GetEndpoint(), "grpc://"), "grpcs://")
+	if err := validateImportProviderTarget(target, p.config.AllowedDNSSuffixes); err != nil {
+		return nil, nil, err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if current, ok := p.connections[instance.GetInstanceId()]; ok && current.target == target {
+		return importv1.NewImportProviderServiceClient(current.connection), instance, nil
+	}
+	if current, ok := p.connections[instance.GetInstanceId()]; ok {
+		_ = current.connection.Close()
+		delete(p.connections, instance.GetInstanceId())
+	}
+	connection, err := p.dial(grpcclient.Config{
+		Name: service, Target: target, Timeout: p.config.Timeout, PSK: p.config.PSK, Retry: p.config.Retry, Breaker: p.config.Breaker, Metrics: p.metrics,
+		TLS: grpcclient.TLSConfig{Enabled: p.config.TLS.Enabled, ServerName: p.config.TLS.ServerName, CAFile: p.config.TLS.CAFile, CertFile: p.config.TLS.CertFile, KeyFile: p.config.TLS.KeyFile, AllowInsecureToken: p.config.AllowInsecure},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	p.connections[instance.GetInstanceId()] = providerConnection{target: target, connection: connection}
+	return importv1.NewImportProviderServiceClient(connection), instance, nil
+}
+
+func supportsImportDataset(metadata map[string]string, dataset string) bool {
+	values, err := importprovider.ParseMetadata(metadata)
+	if err != nil {
+		return false
+	}
+	for _, value := range values {
+		if value.Code == dataset {
+			return true
+		}
+	}
+	return false
+}
+
+func validateImportProviderTarget(target string, suffixes []string) error {
+	value := strings.TrimPrefix(target, "dns:///")
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || host == "" || port == "" || net.ParseIP(host) != nil || strings.EqualFold(host, "localhost") {
+		return errors.New("provider target must be a DNS name with port")
+	}
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, suffix := range suffixes {
+		suffix = strings.ToLower(strings.TrimSpace(suffix))
+		if suffix != "" && (host == strings.TrimPrefix(suffix, ".") || strings.HasSuffix(host, suffix)) {
+			return nil
+		}
+	}
+	return fmt.Errorf("provider host %q is outside allowed DNS suffixes", host)
+}
+
+func (p *GRPCProvider) failure(instance *registryv1.ServiceInstance) {
+	if p.discovery != nil && instance != nil {
+		p.discovery.ReportFailure(instance.GetInstanceId(), p.config.FailureCooldown)
+	}
+}
+
+func (p *GRPCProvider) success(instance *registryv1.ServiceInstance) {
+	if p.discovery != nil && instance != nil {
+		p.discovery.ReportSuccess(instance.GetInstanceId())
+	}
+}
+
+func (p *GRPCProvider) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var result error
+	for id, value := range p.connections {
+		if err := value.connection.Close(); err != nil && result == nil {
+			result = fmt.Errorf("close provider %s: %w", id, err)
+		}
+	}
+	p.connections = map[string]providerConnection{}
+	if p.registryConnection != nil {
+		if err := p.registryConnection.Close(); err != nil && result == nil {
+			result = err
+		}
+	}
+	return result
+}
+
+func protoRows(values []map[string]any) ([]*structpb.Struct, error) {
+	rows := make([]*structpb.Struct, len(values))
+	for i, value := range values {
+		row, err := structpb.NewStruct(value)
+		if err != nil {
+			return nil, fmt.Errorf("encode provider row: %w", err)
+		}
+		rows[i] = row
+	}
+	return rows, nil
+}
+
+func validationResult(response *importv1.ValidateRowsResponse) ValidateBatchResult {
+	rows := make([]map[string]any, len(response.GetNormalizedRows()))
+	for i, value := range response.GetNormalizedRows() {
+		rows[i] = value.AsMap()
+	}
+	issues := make([]RowIssue, len(response.GetIssues()))
+	for i, value := range response.GetIssues() {
+		issues[i] = RowIssue{RowNumber: value.GetRowNumber(), ColumnKey: value.GetColumnKey(), Code: value.GetCode(), Message: value.GetMessage()}
+	}
+	return ValidateBatchResult{NormalizedRows: rows, Issues: issues}
+}
