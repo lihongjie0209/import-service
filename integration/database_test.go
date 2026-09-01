@@ -93,6 +93,11 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if _, getErr := repository.Get(ctx, "tenant-1", "app-2", "job-app-1"); getErr == nil {
 				t.Fatal("cross-application job read succeeded")
 			}
+			// A down migration restores the legacy tenant-only uniqueness rule. Remove
+			// the deliberately cross-application duplicate before testing reversibility.
+			if _, err := db.ExecContext(ctx, db.Rebind(`DELETE FROM import_jobs WHERE tenant_id = ?`), "tenant-1"); err != nil {
+				t.Fatalf("clean scoped migration fixture: %v", err)
+			}
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
