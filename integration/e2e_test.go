@@ -15,6 +15,7 @@ import (
 
 	"github.com/lihongjie0209/import-service/internal/app"
 	"github.com/lihongjie0209/import-service/internal/config"
+	applicationv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/application/v1"
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
@@ -59,6 +60,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	httpAddress := freeAddress(t)
 	grpcAddress := freeAddress(t)
 	const secret = "01234567890123456789012345678901"
+	applicationAddress := startAllowApplicationServer(t)
 	cfg := config.Config{
 		Runtime:       config.Runtime{ActiveProfile: "integration"},
 		App:           config.App{Name: "integration", Env: "integration", ShutdownTimeout: 10 * time.Second},
@@ -76,6 +78,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		User:          config.User{CacheTTL: time.Minute, LockTTL: 10 * time.Second, LockRetryDelay: 20 * time.Millisecond},
 		Idempotency:   config.Idempotency{Enabled: true, ProcessingTTL: 30 * time.Second, ResultTTL: time.Hour, FailureTTL: time.Minute},
 		Import:        config.Import{UploadTTL: 15 * time.Minute, ResultTTL: time.Hour, JobTimeout: time.Minute, BatchSize: 100, MaxRows: 1000, MaxBytes: 1 << 20},
+		Outbound:      config.Outbound{GRPC: map[string]config.GRPCUpstream{"application": {Target: applicationAddress, Timeout: 2 * time.Second}}},
 	}
 	application := app.New(cfg)
 	if err := application.Start(ctx); err != nil {
@@ -90,7 +93,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	if status := postJSON(t, baseURL+"/api/v1/version", "", "", `{}`); status != http.StatusOK {
 		t.Fatalf("public version status = %d", status)
 	}
-	if status := postJSON(t, baseURL+"/api/v1/imports/get", "PSK "+secret, "", `{"tenant_id":"tenant-1","id":"missing"}`); status != http.StatusNotFound {
+	if status := postJSON(t, baseURL+"/api/v1/imports/get", "PSK "+secret, "", `{"tenant_id":"tenant-1","application_id":"app-1","id":"missing"}`); status != http.StatusNotFound {
 		t.Fatalf("PSK import status = %d", status)
 	}
 
@@ -104,9 +107,34 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		t.Fatalf("health = %v, %v", healthResponse, err)
 	}
 	pskCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "PSK "+secret)
-	if _, err := importv1.NewImportServiceClient(connection).GetImportJob(pskCtx, &importv1.GetImportJobRequest{TenantId: "tenant-1", Id: "missing"}); status.Code(err) != codes.NotFound {
+	if _, err := importv1.NewImportServiceClient(connection).GetImportJob(pskCtx, &importv1.GetImportJobRequest{TenantId: "tenant-1", ApplicationId: "app-1", Id: "missing"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("PSK GetImportJob: %v", err)
 	}
+}
+
+type allowApplicationServer struct {
+	applicationv1.UnimplementedApplicationServiceServer
+}
+
+func (allowApplicationServer) BatchCheckTenantApplications(_ context.Context, request *applicationv1.BatchCheckTenantApplicationsRequest) (*applicationv1.BatchCheckTenantApplicationsResponse, error) {
+	decisions := make([]*applicationv1.TenantApplicationDecision, 0, len(request.GetApplicationIds()))
+	for _, applicationID := range request.GetApplicationIds() {
+		decisions = append(decisions, &applicationv1.TenantApplicationDecision{ApplicationId: applicationID, Granted: true})
+	}
+	return &applicationv1.BatchCheckTenantApplicationsResponse{Decisions: decisions}, nil
+}
+
+func startAllowApplicationServer(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	applicationv1.RegisterApplicationServiceServer(server, allowApplicationServer{})
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { server.Stop(); _ = listener.Close() })
+	return listener.Addr().String()
 }
 
 func freeAddress(t *testing.T) string {

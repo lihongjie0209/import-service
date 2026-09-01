@@ -45,12 +45,12 @@ func (p *GRPCProvider) ListDatasets(_ context.Context, search string, page, page
 	return values[start:end], int64(len(values)), nil
 }
 
-func (p *GRPCProvider) DescribeDataset(ctx context.Context, tenantID, service, dataset string) (DatasetDescriptor, error) {
+func (p *GRPCProvider) DescribeDataset(ctx context.Context, tenantID, applicationID, service, dataset string) (DatasetDescriptor, error) {
 	client, instance, err := p.client(service, dataset)
 	if err != nil {
 		return DatasetDescriptor{}, err
 	}
-	response, err := client.DescribeImportDataset(ctx, &importv1.DescribeImportDatasetRequest{TenantId: tenantID, DatasetCode: dataset})
+	response, err := client.DescribeImportDataset(ctx, &importv1.DescribeImportDatasetRequest{TenantId: tenantID, ApplicationId: applicationID, DatasetCode: dataset})
 	if err != nil {
 		p.failure(instance)
 		return DatasetDescriptor{}, err
@@ -173,18 +173,19 @@ func NewProvider(lifecycle fx.Lifecycle, cfg config.Config, static *outbound.Reg
 }
 
 type grpcValidationSession struct {
-	provider *GRPCProvider
-	instance *registryv1.ServiceInstance
-	tenant   string
-	dataset  string
-	stream   grpc.BidiStreamingClient[importv1.ValidateRowsRequest, importv1.ValidateRowsResponse]
-	ctx      context.Context
-	service  string
-	open     func() error
+	provider    *GRPCProvider
+	instance    *registryv1.ServiceInstance
+	tenant      string
+	application string
+	dataset     string
+	stream      grpc.BidiStreamingClient[importv1.ValidateRowsRequest, importv1.ValidateRowsResponse]
+	ctx         context.Context
+	service     string
+	open        func() error
 }
 
-func (p *GRPCProvider) OpenValidation(ctx context.Context, service, tenant, dataset string) (ValidationSession, error) {
-	s := &grpcValidationSession{provider: p, tenant: tenant, dataset: dataset, ctx: ctx, service: service}
+func (p *GRPCProvider) OpenValidation(ctx context.Context, service, tenant, application, dataset string) (ValidationSession, error) {
+	s := &grpcValidationSession{provider: p, tenant: tenant, application: application, dataset: dataset, ctx: ctx, service: service}
 	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen); err != nil {
 		return nil, err
 	}
@@ -192,14 +193,14 @@ func (p *GRPCProvider) OpenValidation(ctx context.Context, service, tenant, data
 }
 
 func (s *grpcValidationSession) ValidateBatch(request ValidateBatchRequest) (ValidateBatchResult, error) {
-	if request.TenantID != s.tenant || request.DatasetCode != s.dataset {
+	if request.TenantID != s.tenant || request.ApplicationID != s.application || request.DatasetCode != s.dataset {
 		return ValidateBatchResult{}, ErrInvalidProviderResponse
 	}
 	rows, err := protoRows(request.Rows)
 	if err != nil {
 		return ValidateBatchResult{}, err
 	}
-	message := &importv1.ValidateRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, FirstRowNumber: request.FirstRowNumber, Rows: rows}
+	message := &importv1.ValidateRowsRequest{TenantId: request.TenantID, ApplicationId: request.ApplicationID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, FirstRowNumber: request.FirstRowNumber, Rows: rows}
 	var response *importv1.ValidateRowsResponse
 	for attempt := 1; attempt <= s.provider.attempts(); attempt++ {
 		if s.stream == nil {
@@ -263,18 +264,19 @@ func (s *grpcValidationSession) Close() error {
 }
 
 type grpcApplySession struct {
-	provider *GRPCProvider
-	instance *registryv1.ServiceInstance
-	tenant   string
-	dataset  string
-	stream   grpc.BidiStreamingClient[importv1.ApplyRowsRequest, importv1.ApplyRowsResponse]
-	ctx      context.Context
-	service  string
-	open     func() error
+	provider    *GRPCProvider
+	instance    *registryv1.ServiceInstance
+	tenant      string
+	application string
+	dataset     string
+	stream      grpc.BidiStreamingClient[importv1.ApplyRowsRequest, importv1.ApplyRowsResponse]
+	ctx         context.Context
+	service     string
+	open        func() error
 }
 
-func (p *GRPCProvider) OpenApply(ctx context.Context, service, tenant, dataset string) (ApplySession, error) {
-	s := &grpcApplySession{provider: p, tenant: tenant, dataset: dataset, ctx: ctx, service: service}
+func (p *GRPCProvider) OpenApply(ctx context.Context, service, tenant, application, dataset string) (ApplySession, error) {
+	s := &grpcApplySession{provider: p, tenant: tenant, application: application, dataset: dataset, ctx: ctx, service: service}
 	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen); err != nil {
 		return nil, err
 	}
@@ -282,14 +284,14 @@ func (p *GRPCProvider) OpenApply(ctx context.Context, service, tenant, dataset s
 }
 
 func (s *grpcApplySession) ApplyBatch(request ApplyBatchRequest) (ApplyBatchResult, error) {
-	if request.TenantID != s.tenant || request.DatasetCode != s.dataset {
+	if request.TenantID != s.tenant || request.ApplicationID != s.application || request.DatasetCode != s.dataset {
 		return ApplyBatchResult{}, ErrInvalidProviderResponse
 	}
 	rows, err := protoRows(request.Rows)
 	if err != nil {
 		return ApplyBatchResult{}, err
 	}
-	message := &importv1.ApplyRowsRequest{TenantId: request.TenantID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, Rows: rows, IdempotencyKey: request.IdempotencyKey}
+	message := &importv1.ApplyRowsRequest{TenantId: request.TenantID, ApplicationId: request.ApplicationID, DatasetCode: request.DatasetCode, JobId: request.JobID, BatchNumber: request.BatchNumber, Rows: rows, IdempotencyKey: request.IdempotencyKey}
 	var response *importv1.ApplyRowsResponse
 	for attempt := 1; attempt <= s.provider.attempts(); attempt++ {
 		if s.stream == nil {

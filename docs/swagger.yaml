@@ -31,6 +31,8 @@ definitions:
     type: object
   httptransport.CompleteUploadRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       source_bytes:
@@ -44,6 +46,8 @@ definitions:
     type: object
   httptransport.ConfirmImportRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       idempotency_key:
@@ -55,6 +59,8 @@ definitions:
     type: object
   httptransport.CreateImportRequest:
     properties:
+      application_id:
+        type: string
       dataset_code:
         type: string
       filename:
@@ -70,6 +76,8 @@ definitions:
     type: object
   httptransport.DescribeImportDatasetRequest:
     properties:
+      application_id:
+        type: string
       dataset_code:
         type: string
       provider_service:
@@ -79,6 +87,8 @@ definitions:
     type: object
   httptransport.ErrorReportRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       tenant_id:
@@ -88,6 +98,8 @@ definitions:
     type: object
   httptransport.ImportSelector:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       tenant_id:
@@ -95,6 +107,8 @@ definitions:
     type: object
   httptransport.ListImportDatasetsRequest:
     properties:
+      application_id:
+        type: string
       page:
         type: integer
       page_size:
@@ -106,6 +120,8 @@ definitions:
     type: object
   httptransport.ListImportsRequest:
     properties:
+      application_id:
+        type: string
       created_from:
         type: string
       created_to:
@@ -133,6 +149,8 @@ definitions:
     type: object
   httptransport.RetryImportRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       idempotency_key:
@@ -144,6 +162,8 @@ definitions:
     type: object
   httptransport.VersionedImportRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       tenant_id:

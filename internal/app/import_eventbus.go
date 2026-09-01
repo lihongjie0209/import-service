@@ -19,8 +19,8 @@ import (
 )
 
 type importProcessor interface {
-	Validate(context.Context, string, string) error
-	Apply(context.Context, string, string) error
+	Validate(context.Context, string, string, string) error
+	Apply(context.Context, string, string, string) error
 }
 type importEventRuntime struct {
 	cfg    config.Config
@@ -116,10 +116,13 @@ func (r *importEventRuntime) handle(ctx context.Context, envelope *eventbus.Enve
 	if payload.GetChangeType() != expected || job == nil {
 		return errors.New("invalid import job event")
 	}
-	if expected == "requested" {
-		return r.worker.Validate(ctx, job.GetTenantId(), job.GetId())
+	if job.GetTenantId() == "" || job.GetApplicationId() == "" || envelope.GetTenantId() != job.GetTenantId() || envelope.GetApplicationId() != job.GetApplicationId() {
+		return errors.New("import job event scope mismatch")
 	}
-	return r.worker.Apply(ctx, job.GetTenantId(), job.GetId())
+	if expected == "requested" {
+		return r.worker.Validate(ctx, job.GetTenantId(), job.GetApplicationId(), job.GetId())
+	}
+	return r.worker.Apply(ctx, job.GetTenantId(), job.GetApplicationId(), job.GetId())
 }
 func (r *importEventRuntime) stop(context.Context) error {
 	if r.cancel != nil {

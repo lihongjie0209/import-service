@@ -23,6 +23,7 @@ const (
 type Job struct {
 	ID                   string     `db:"id" json:"id"`
 	TenantID             string     `db:"tenant_id" json:"tenant_id"`
+	ApplicationID        string     `db:"application_id" json:"application_id"`
 	DatasetCode          string     `db:"dataset_code" json:"dataset_code"`
 	ProviderService      string     `db:"provider_service" json:"provider_service"`
 	Format               string     `db:"format" json:"format"`
@@ -54,13 +55,13 @@ type Job struct {
 }
 
 type CreateInput struct {
-	TenantID, DatasetCode, ProviderService, Format, Filename, IdempotencyKey string
+	TenantID, ApplicationID, DatasetCode, ProviderService, Format, Filename, IdempotencyKey string
 }
 
 type ListFilter struct {
-	TenantID, Status, DatasetCode string
-	CreatedFrom, CreatedTo        *time.Time
-	Page, PageSize                int32
+	TenantID, ApplicationID, Status, DatasetCode string
+	CreatedFrom, CreatedTo                       *time.Time
+	Page, PageSize                               int32
 }
 
 type Page struct {

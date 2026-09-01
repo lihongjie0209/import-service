@@ -33,18 +33,18 @@ type RowIssue struct {
 }
 
 type ValidateBatchRequest struct {
-	TenantID, DatasetCode, JobID string
-	BatchNumber, FirstRowNumber  int64
-	Rows                         []map[string]any
+	TenantID, ApplicationID, DatasetCode, JobID string
+	BatchNumber, FirstRowNumber                 int64
+	Rows                                        []map[string]any
 }
 type ValidateBatchResult struct {
 	NormalizedRows []map[string]any
 	Issues         []RowIssue
 }
 type ApplyBatchRequest struct {
-	TenantID, DatasetCode, JobID, IdempotencyKey string
-	BatchNumber                                  int64
-	Rows                                         []map[string]any
+	TenantID, ApplicationID, DatasetCode, JobID, IdempotencyKey string
+	BatchNumber                                                 int64
+	Rows                                                        []map[string]any
 }
 type ApplyBatchResult struct {
 	AppliedRows int64
@@ -63,7 +63,7 @@ type ApplySession interface {
 
 type Provider interface {
 	ListDatasets(context.Context, string, int32, int32) ([]DatasetSummary, int64, error)
-	DescribeDataset(context.Context, string, string, string) (DatasetDescriptor, error)
-	OpenValidation(context.Context, string, string, string) (ValidationSession, error)
-	OpenApply(context.Context, string, string, string) (ApplySession, error)
+	DescribeDataset(context.Context, string, string, string, string) (DatasetDescriptor, error)
+	OpenValidation(context.Context, string, string, string, string) (ValidationSession, error)
+	OpenApply(context.Context, string, string, string, string) (ApplySession, error)
 }

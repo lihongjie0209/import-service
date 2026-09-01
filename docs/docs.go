@@ -586,6 +586,9 @@ const docTemplate = `{
         "httptransport.CompleteUploadRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -606,6 +609,9 @@ const docTemplate = `{
         "httptransport.ConfirmImportRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -623,6 +629,9 @@ const docTemplate = `{
         "httptransport.CreateImportRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "dataset_code": {
                     "type": "string"
                 },
@@ -646,6 +655,9 @@ const docTemplate = `{
         "httptransport.DescribeImportDatasetRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "dataset_code": {
                     "type": "string"
                 },
@@ -660,6 +672,9 @@ const docTemplate = `{
         "httptransport.ErrorReportRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -674,6 +689,9 @@ const docTemplate = `{
         "httptransport.ImportSelector": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -685,6 +703,9 @@ const docTemplate = `{
         "httptransport.ListImportDatasetsRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "page": {
                     "type": "integer"
                 },
@@ -702,6 +723,9 @@ const docTemplate = `{
         "httptransport.ListImportsRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "created_from": {
                     "type": "string"
                 },
@@ -743,6 +767,9 @@ const docTemplate = `{
         "httptransport.RetryImportRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -760,6 +787,9 @@ const docTemplate = `{
         "httptransport.VersionedImportRequest": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },

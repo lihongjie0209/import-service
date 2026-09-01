@@ -1,6 +1,6 @@
 # Import Service
 
-平台统一异步数据导入服务。它负责文件接收、流式解析、全量验证、错误报告和显式确认；最终写入只通过中央 `platform.import.v1.ImportProviderService` 交给数据所有者，不查询或修改其他服务的数据库。
+平台统一异步数据导入服务。它负责文件接收、流式解析、全量验证、错误报告和显式确认；最终写入只通过中央 `platform.import.v1.ImportProviderService` 交给数据所有者，不查询或修改其他服务的数据库。数据集访问和任务生命周期均按 `tenant_id + application_id` 隔离，并由 application-service 校验租户应用授权。
 
 ## 导入流程
 
@@ -36,12 +36,12 @@ uploading -> queued -> validating -> validation_failed -> uploading
 
 ## 服务间接口
 
-中央契约来自 `github.com/lihongjie0209/platform-protos@v0.18.0`：
+中央契约来自 `github.com/lihongjie0209/platform-protos@v0.40.0`：
 
 - `platform.import.v1.ImportService`：导入任务管理。
 - `platform.import.v1.ImportProviderService`：业务服务实现数据集描述、批次验证/规范化和幂等批次应用。
 
-Provider 必须在本服务内验证租户和调用者权限；`ApplyRows` 必须以 `job_id + batch_number` 或请求中的 idempotency key 建立持久幂等边界。禁止把整个文件加载到内存，也不能依赖 import-service 直接写业务表。
+Provider 必须在本服务内验证租户、应用和调用者权限；`DescribeImportDataset`、`ValidateRows`、`ApplyRows` 都会收到同一 `tenant_id + application_id`。`ApplyRows` 必须以 `job_id + batch_number` 或请求中的 idempotency key 建立持久幂等边界。禁止把整个文件加载到内存，也不能依赖 import-service 直接写业务表。
 
 Provider 流在注册中心启动竞争、实例摘除或临时 gRPC 故障时按 `provider_client.retry` 重建连接并重放当前批次。应用批次始终复用原始幂等键，因此 Provider 必须持久化该边界，不能只在内存去重。
 
@@ -50,6 +50,7 @@ Provider 流在注册中心启动竞争、实例摘除或临时 gRPC 故障时�
 - 默认 PostgreSQL 数据库：`platform`
 - 独立 Schema：`data_import`
 - 独立迁移表：`import_schema_migrations`
+- 任务、幂等键、对象路径、Provider 请求和事件按租户与应用共同隔离
 - 支持 PostgreSQL、KingbaseES 和 MySQL
 - 对象存储使用 S3/MinIO；事件总线使用 NATS JetStream `PLATFORM_EVENTS`
 - 配置优先级：环境变量 > `config-{profile}.yaml` > `config.yaml` > 默认值

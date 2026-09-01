@@ -22,6 +22,7 @@ import (
 	"github.com/lihongjie0209/import-service/internal/scheduler"
 	grpctransport "github.com/lihongjie0209/import-service/internal/transport/grpc"
 	httptransport "github.com/lihongjie0209/import-service/internal/transport/http"
+	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
@@ -41,6 +42,7 @@ func New(cfg config.Config) *fx.App {
 		fx.Provide(idempotency.New),
 		fx.Provide(observability.NewMetrics),
 		outbound.Module,
+		fx.Provide(newApplicationVerifier),
 		fx.Provide(authorization.New),
 		ImportModule,
 		ImportEventModule,
@@ -123,11 +125,12 @@ var CacheModule = fx.Module("cache", fx.Provide(newRedis, newLocker), fx.Invoke(
 	}
 }))
 
-func newImportService(repository importjob.Repository, transactor *database.Transactor, storage importjob.Storage, cfg config.Config) *importjob.Service {
-	return importjob.NewService(repository, transactor, storage, cfg.Import.UploadTTL)
-}
 func newImportWorker(repository importjob.Repository, transactor *database.Transactor, storage importjob.Storage, provider importjob.Provider, cfg config.Config) *importjob.Worker {
 	return importjob.NewWorker(repository, transactor, storage, provider, cfg.Import.BatchSize, cfg.Import.MaxRows, cfg.Import.MaxBytes, cfg.Import.JobTimeout, cfg.Import.ResultTTL)
 }
 
-var ImportModule = fx.Module("import", fx.Provide(objectstorage.New, importjob.NewRepository, importjob.NewProvider, importjob.NewCatalog, newImportService, newImportWorker))
+func newImportService(repository importjob.Repository, transactor *database.Transactor, storage importjob.Storage, cfg config.Config, applications appaccess.Verifier) (*importjob.Service, error) {
+	return importjob.NewRuntimeService(repository, transactor, storage, cfg.Import.UploadTTL, applications)
+}
+
+var ImportModule = fx.Module("import", fx.Provide(objectstorage.New, importjob.NewRepository, importjob.NewProvider, importjob.NewRuntimeCatalog, newImportService, newImportWorker))

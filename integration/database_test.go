@@ -12,6 +12,7 @@ import (
 
 	"github.com/lihongjie0209/import-service/internal/config"
 	appdb "github.com/lihongjie0209/import-service/internal/database"
+	"github.com/lihongjie0209/import-service/internal/importjob"
 	"github.com/lihongjie0209/import-service/internal/migration"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
@@ -69,6 +70,28 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			}
 			if importTables != 1 {
 				t.Fatalf("import_jobs table count=%d", importTables)
+			}
+			var applicationColumns int
+			if databaseType == "postgres" {
+				err = db.GetContext(ctx, &applicationColumns, `SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'import_jobs' AND column_name = 'application_id'`)
+			} else {
+				err = db.GetContext(ctx, &applicationColumns, `SELECT count(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'import_jobs' AND column_name = 'application_id'`)
+			}
+			if err != nil || applicationColumns != 1 {
+				t.Fatalf("application_id column count=%d err=%v", applicationColumns, err)
+			}
+			repository := importjob.NewRepository(db)
+			now := time.Now()
+			base := importjob.Job{TenantID: "tenant-1", DatasetCode: "test.rows", ProviderService: "test-provider", Format: importjob.FormatCSV, Filename: "rows.csv", Status: importjob.StatusUploading, SourceObjectKey: "source", NormalizedObjectKey: "normalized", ErrorReportObjectKey: "errors", IdempotencyKey: "shared-key", Version: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: "integration", UpdatedBy: "integration"}
+			for _, applicationID := range []string{"app-1", "app-2"} {
+				job := base
+				job.ID, job.ApplicationID = "job-"+applicationID, applicationID
+				if _, created, createErr := repository.Create(ctx, db, job); createErr != nil || !created {
+					t.Fatalf("create job for %s: created=%v err=%v", applicationID, created, createErr)
+				}
+			}
+			if _, getErr := repository.Get(ctx, "tenant-1", "app-2", "job-app-1"); getErr == nil {
+				t.Fatal("cross-application job read succeeded")
 			}
 			if err := db.Close(); err != nil {
 				t.Fatal(err)

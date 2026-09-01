@@ -52,8 +52,8 @@ func NewWorker(repository Repository, transactor transactionRunner, storage Stor
 	return &Worker{repository: repository, transactor: transactor, storage: storage, provider: provider, batchSize: batchSize, maxRows: maxRows, maxBytes: maxBytes, timeout: timeout, resultTTL: resultTTL, now: time.Now}
 }
 
-func (w *Worker) Validate(ctx context.Context, tenantID, id string) error {
-	job, claimed, err := w.repository.ClaimValidation(ctx, tenantID, id, w.now())
+func (w *Worker) Validate(ctx context.Context, tenantID, applicationID, id string) error {
+	job, claimed, err := w.repository.ClaimValidation(ctx, tenantID, applicationID, id, w.now())
 	if err != nil || !claimed {
 		return err
 	}
@@ -80,14 +80,14 @@ func (w *Worker) Validate(ctx context.Context, tenantID, id string) error {
 	if err := reportCSV.Write([]string{"row_number", "column", "code", "message"}); err != nil {
 		return w.fail(ctx, job, StatusValidating, "temporary_storage_unavailable", err)
 	}
-	validation, err := w.provider.OpenValidation(runCtx, job.ProviderService, job.TenantID, job.DatasetCode)
+	validation, err := w.provider.OpenValidation(runCtx, job.ProviderService, job.TenantID, job.ApplicationID, job.DatasetCode)
 	if err != nil {
 		return w.fail(ctx, job, StatusValidating, "provider_unavailable", err)
 	}
 	defer func() { _ = validation.Close() }()
 	validRows, invalidRows := int64(0), int64(0)
 	parseResult, err := StreamRows(runCtx, source, job.Format, w.batchSize, w.maxRows, w.maxBytes, func(batch ParsedBatch) error {
-		result, validateErr := validation.ValidateBatch(ValidateBatchRequest{TenantID: job.TenantID, DatasetCode: job.DatasetCode, JobID: job.ID, BatchNumber: batch.Number, FirstRowNumber: batch.FirstRowNumber, Rows: batch.Rows})
+		result, validateErr := validation.ValidateBatch(ValidateBatchRequest{TenantID: job.TenantID, ApplicationID: job.ApplicationID, DatasetCode: job.DatasetCode, JobID: job.ID, BatchNumber: batch.Number, FirstRowNumber: batch.FirstRowNumber, Rows: batch.Rows})
 		if validateErr != nil {
 			return validateErr
 		}
@@ -168,8 +168,8 @@ func (w *Worker) Validate(ctx context.Context, tenantID, id string) error {
 	})
 }
 
-func (w *Worker) Apply(ctx context.Context, tenantID, id string) error {
-	job, claimed, err := w.repository.ClaimApply(ctx, tenantID, id, w.now())
+func (w *Worker) Apply(ctx context.Context, tenantID, applicationID, id string) error {
+	job, claimed, err := w.repository.ClaimApply(ctx, tenantID, applicationID, id, w.now())
 	if err != nil || !claimed {
 		return err
 	}
@@ -180,14 +180,14 @@ func (w *Worker) Apply(ctx context.Context, tenantID, id string) error {
 		return w.fail(ctx, job, StatusApplying, "normalized_source_unavailable", err)
 	}
 	defer func() { _ = source.Close() }()
-	apply, err := w.provider.OpenApply(runCtx, job.ProviderService, job.TenantID, job.DatasetCode)
+	apply, err := w.provider.OpenApply(runCtx, job.ProviderService, job.TenantID, job.ApplicationID, job.DatasetCode)
 	if err != nil {
 		return w.fail(ctx, job, StatusApplying, "provider_unavailable", err)
 	}
 	defer func() { _ = apply.Close() }()
 	applied := int64(0)
 	_, err = StreamRows(runCtx, source, FormatJSONL, w.batchSize, w.maxRows, w.maxBytes, func(batch ParsedBatch) error {
-		result, applyErr := apply.ApplyBatch(ApplyBatchRequest{TenantID: job.TenantID, DatasetCode: job.DatasetCode, JobID: job.ID, BatchNumber: batch.Number, Rows: batch.Rows, IdempotencyKey: fmt.Sprintf("%s:%d", job.ID, batch.Number)})
+		result, applyErr := apply.ApplyBatch(ApplyBatchRequest{TenantID: job.TenantID, ApplicationID: job.ApplicationID, DatasetCode: job.DatasetCode, JobID: job.ID, BatchNumber: batch.Number, Rows: batch.Rows, IdempotencyKey: fmt.Sprintf("%s:%d", job.ID, batch.Number)})
 		if applyErr != nil {
 			return applyErr
 		}

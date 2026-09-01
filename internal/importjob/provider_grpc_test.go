@@ -65,14 +65,17 @@ func (s *applyStreamStub) RecvMsg(any) error            { return nil }
 func TestValidationSessionReusesOneBidirectionalStream(t *testing.T) {
 	t.Parallel()
 	stream := &validationStreamStub{responses: []*importv1.ValidateRowsResponse{{BatchNumber: 1}, {BatchNumber: 2}}}
-	session := &grpcValidationSession{provider: &GRPCProvider{}, tenant: "tenant-1", dataset: "identity.users", stream: stream}
+	session := &grpcValidationSession{provider: &GRPCProvider{}, tenant: "tenant-1", application: "app-1", dataset: "identity.users", stream: stream}
 	for batch := int64(1); batch <= 2; batch++ {
-		if _, err := session.ValidateBatch(ValidateBatchRequest{TenantID: "tenant-1", DatasetCode: "identity.users", JobID: "job-1", BatchNumber: batch, Rows: []map[string]any{{"email": "user@example.com"}}}); err != nil {
+		if _, err := session.ValidateBatch(ValidateBatchRequest{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "identity.users", JobID: "job-1", BatchNumber: batch, Rows: []map[string]any{{"email": "user@example.com"}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if len(stream.sent) != 2 || stream.closed != 0 {
 		t.Fatalf("sent=%d closed=%d", len(stream.sent), stream.closed)
+	}
+	if stream.sent[0].GetApplicationId() != "app-1" {
+		t.Fatalf("application_id=%q", stream.sent[0].GetApplicationId())
 	}
 	if err := session.Close(); err != nil || stream.closed != 1 {
 		t.Fatalf("close count=%d err=%v", stream.closed, err)
@@ -84,14 +87,14 @@ func TestValidationSessionReconnectsAndReplaysBatchAfterTransientFailure(t *test
 	failed := &validationStreamStub{}
 	recovered := &validationStreamStub{responses: []*importv1.ValidateRowsResponse{{BatchNumber: 7}}}
 	provider := &GRPCProvider{config: config.ProviderClient{Retry: config.Retry{MaxAttempts: 2, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond}}}
-	session := &grpcValidationSession{provider: provider, tenant: "tenant-1", dataset: "identity.users", ctx: t.Context(), stream: failed}
+	session := &grpcValidationSession{provider: provider, tenant: "tenant-1", application: "app-1", dataset: "identity.users", ctx: t.Context(), stream: failed}
 	reopens := 0
 	session.open = func() error {
 		reopens++
 		session.stream = recovered
 		return nil
 	}
-	result, err := session.ValidateBatch(ValidateBatchRequest{TenantID: "tenant-1", DatasetCode: "identity.users", JobID: "job-1", BatchNumber: 7, Rows: []map[string]any{{"email": "user@example.com"}}})
+	result, err := session.ValidateBatch(ValidateBatchRequest{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "identity.users", JobID: "job-1", BatchNumber: 7, Rows: []map[string]any{{"email": "user@example.com"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,17 +108,20 @@ func TestApplySessionReconnectsWithStableIdempotencyKey(t *testing.T) {
 	failed := &applyStreamStub{}
 	recovered := &applyStreamStub{responses: []*importv1.ApplyRowsResponse{{BatchNumber: 3, AppliedRows: 1}}}
 	provider := &GRPCProvider{config: config.ProviderClient{Retry: config.Retry{MaxAttempts: 2, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond}}}
-	session := &grpcApplySession{provider: provider, tenant: "tenant-1", dataset: "billing.plans", ctx: t.Context(), stream: failed}
+	session := &grpcApplySession{provider: provider, tenant: "tenant-1", application: "app-1", dataset: "billing.plans", ctx: t.Context(), stream: failed}
 	session.open = func() error {
 		session.stream = recovered
 		return nil
 	}
-	result, err := session.ApplyBatch(ApplyBatchRequest{TenantID: "tenant-1", DatasetCode: "billing.plans", JobID: "job-1", BatchNumber: 3, Rows: []map[string]any{{"code": "pro"}}, IdempotencyKey: "job-1:3"})
+	result, err := session.ApplyBatch(ApplyBatchRequest{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "billing.plans", JobID: "job-1", BatchNumber: 3, Rows: []map[string]any{{"code": "pro"}}, IdempotencyKey: "job-1:3"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.AppliedRows != 1 || len(failed.sent) != 1 || len(recovered.sent) != 1 || failed.sent[0].GetIdempotencyKey() != "job-1:3" || recovered.sent[0].GetIdempotencyKey() != "job-1:3" {
 		t.Fatalf("failed=%+v recovered=%+v result=%+v", failed, recovered, result)
+	}
+	if recovered.sent[0].GetApplicationId() != "app-1" {
+		t.Fatalf("application_id=%q", recovered.sent[0].GetApplicationId())
 	}
 }
 

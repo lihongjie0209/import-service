@@ -55,6 +55,7 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 	}
 	provider := &testImportProvider{appliedKeys: map[string]struct{}{}}
 	providerAddress := startImportProvider(t, provider)
+	applicationAddress := startAllowApplicationServer(t)
 	httpAddress, grpcAddress := freeAddress(t), freeAddress(t)
 	migrationPath, _ := filepath.Abs(filepath.Join("..", "migrations", "postgres"))
 	const psk = "integration-import-psk-0000000000000000"
@@ -68,7 +69,10 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 		Cron: config.Cron{Enabled: false, Timezone: "UTC"}, EventBus: config.EventBus{Enabled: true, URLs: []string{natsURL}, StreamName: "PLATFORM_EVENTS", Subjects: []string{"platform.>"}, Storage: "memory", MaxAge: time.Hour, DuplicateWindow: time.Minute, ConnectTimeout: 10 * time.Second, ReconnectWait: time.Second, PublishTimeout: 5 * time.Second, ConsumerAckWait: 2 * time.Minute, ConsumerMaxDeliver: 3, DispatchInterval: 20 * time.Millisecond, DispatchBatchSize: 10, DispatchLease: time.Minute, DispatchRetryDelay: 100 * time.Millisecond, PublishedRetention: time.Hour, CleanupInterval: time.Hour, CleanupBatchSize: 10},
 		Import: config.Import{UploadTTL: time.Minute, ResultTTL: time.Hour, JobTimeout: time.Minute, BatchSize: 1, MaxRows: 100, MaxBytes: 1 << 20}, ObjectStorage: config.ObjectStorage{Enabled: true, Endpoint: endpoint, AccessKey: accessKey, SecretKey: secretKey, Bucket: "platform-imports", PresignTTL: time.Minute},
 		ProviderClient: config.ProviderClient{Retry: config.Retry{MaxAttempts: 3, InitialBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond}},
-		Outbound:       config.Outbound{GRPC: map[string]config.GRPCUpstream{"test-provider": {Target: providerAddress, Timeout: 5 * time.Second, Retry: config.Retry{MaxAttempts: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}}}},
+		Outbound: config.Outbound{GRPC: map[string]config.GRPCUpstream{
+			"application":   {Target: applicationAddress, Timeout: 2 * time.Second},
+			"test-provider": {Target: providerAddress, Timeout: 5 * time.Second, Retry: config.Retry{MaxAttempts: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}},
+		}},
 	}
 	application := app.New(cfg)
 	if err := application.Start(ctx); err != nil {
@@ -80,7 +84,7 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 		_ = application.Stop(stopCtx)
 	})
 	baseURL := "http://" + httpAddress
-	body, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/create", "PSK "+psk, "", `{"tenant_id":"tenant-1","dataset_code":"test.rows","provider_service":"test-provider","format":"csv","filename":"rows.csv","idempotency_key":"async-import-1"}`)
+	body, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/create", "PSK "+psk, "", `{"tenant_id":"tenant-1","application_id":"app-1","dataset_code":"test.rows","provider_service":"test-provider","format":"csv","filename":"rows.csv","idempotency_key":"async-import-1"}`)
 	if statusCode != http.StatusOK {
 		t.Fatalf("create status=%d body=%s", statusCode, body)
 	}
@@ -112,12 +116,12 @@ func TestAsynchronousImportThroughJetStreamAndMinIO(t *testing.T) {
 		t.Fatalf("upload status=%d", response.StatusCode)
 	}
 	digest := sha256.Sum256(source)
-	completeBody, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/complete-upload", "PSK "+psk, "", `{"tenant_id":"tenant-1","id":"`+created.Body.Job.ID+`","version":1,"source_bytes":`+strconv.Itoa(len(source))+`,"source_checksum":"`+hex.EncodeToString(digest[:])+`"}`)
+	completeBody, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/complete-upload", "PSK "+psk, "", `{"tenant_id":"tenant-1","application_id":"app-1","id":"`+created.Body.Job.ID+`","version":1,"source_bytes":`+strconv.Itoa(len(source))+`,"source_checksum":"`+hex.EncodeToString(digest[:])+`"}`)
 	if statusCode != http.StatusOK {
 		t.Fatalf("complete status=%d body=%s", statusCode, completeBody)
 	}
 	ready := waitImportJob(t, baseURL, psk, created.Body.Job.ID, "ready")
-	confirmBody, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/confirm", "PSK "+psk, "", `{"tenant_id":"tenant-1","id":"`+created.Body.Job.ID+`","version":`+strconv.FormatInt(ready.Version, 10)+`,"idempotency_key":"confirm-1"}`)
+	confirmBody, statusCode := postJSONBody(t, baseURL+"/api/v1/imports/confirm", "PSK "+psk, "", `{"tenant_id":"tenant-1","application_id":"app-1","id":"`+created.Body.Job.ID+`","version":`+strconv.FormatInt(ready.Version, 10)+`,"idempotency_key":"confirm-1"}`)
 	if statusCode != http.StatusOK {
 		t.Fatalf("confirm status=%d body=%s", statusCode, confirmBody)
 	}
@@ -141,7 +145,7 @@ func waitImportJob(t *testing.T, baseURL, psk, id, expected string) importStatus
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		body, _ := postJSONBody(t, baseURL+"/api/v1/imports/get", "PSK "+psk, "", `{"tenant_id":"tenant-1","id":"`+id+`"}`)
+		body, _ := postJSONBody(t, baseURL+"/api/v1/imports/get", "PSK "+psk, "", `{"tenant_id":"tenant-1","application_id":"app-1","id":"`+id+`"}`)
 		var result envelopeBody[importStatus]
 		if json.Unmarshal(body, &result) == nil && result.Body.Status == expected {
 			return result.Body
@@ -178,6 +182,9 @@ func (p *testImportProvider) ValidateRows(stream importv1.ImportProviderService_
 		if err != nil {
 			return err
 		}
+		if request.GetTenantId() != "tenant-1" || request.GetApplicationId() != "app-1" {
+			return status.Error(codes.InvalidArgument, "unexpected import scope")
+		}
 		if p.validationFailed.CompareAndSwap(false, true) {
 			return status.Error(codes.Unavailable, "transient validation failure")
 		}
@@ -195,6 +202,9 @@ func (p *testImportProvider) ApplyRows(stream importv1.ImportProviderService_App
 		}
 		if err != nil {
 			return err
+		}
+		if request.GetTenantId() != "tenant-1" || request.GetApplicationId() != "app-1" {
+			return status.Error(codes.InvalidArgument, "unexpected import scope")
 		}
 		p.mu.Lock()
 		_, duplicate := p.appliedKeys[request.GetIdempotencyKey()]

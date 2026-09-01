@@ -14,8 +14,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/lihongjie0209/microservice-platform-go v0.9.7
-	github.com/lihongjie0209/platform-protos v0.25.0
+	github.com/lihongjie0209/microservice-platform-go v0.9.10
+	github.com/lihongjie0209/platform-protos v0.40.0
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/extra/redisotel/v9 v9.22.0

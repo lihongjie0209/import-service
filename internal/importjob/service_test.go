@@ -10,10 +10,15 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 )
 
 type fakeTransaction struct{}
+
+type applicationVerifierStub struct{ err error }
+
+func (v applicationVerifierStub) Verify(context.Context, string, string) error { return v.err }
 
 func (fakeTransaction) Within(_ context.Context, _ *sql.TxOptions, fn func(*sqlx.Tx) error) error {
 	return fn(nil)
@@ -31,8 +36,8 @@ func (r *fakeRepository) Create(_ context.Context, _ sqlx.ExtContext, value Job)
 	r.job = value
 	return r.job, true, nil
 }
-func (r *fakeRepository) Get(_ context.Context, tenantID, id string) (Job, error) {
-	if r.job.TenantID != tenantID || r.job.ID != id {
+func (r *fakeRepository) Get(_ context.Context, tenantID, applicationID, id string) (Job, error) {
+	if r.job.TenantID != tenantID || r.job.ApplicationID != applicationID || r.job.ID != id {
 		return Job{}, ErrNotFound
 	}
 	return r.job, nil
@@ -47,8 +52,8 @@ func (r *fakeRepository) CompleteUpload(_ context.Context, _ sqlx.ExtContext, va
 	r.job.Version++
 	return r.job, nil
 }
-func (r *fakeRepository) Cancel(_ context.Context, _ sqlx.ExtContext, tenantID, id string, expected int64, actor string, now time.Time) (Job, error) {
-	if r.job.TenantID != tenantID || r.job.ID != id || r.job.Version != expected {
+func (r *fakeRepository) Cancel(_ context.Context, _ sqlx.ExtContext, tenantID, applicationID, id string, expected int64, actor string, now time.Time) (Job, error) {
+	if r.job.TenantID != tenantID || r.job.ApplicationID != applicationID || r.job.ID != id || r.job.Version != expected {
 		return Job{}, ErrStaleVersion
 	}
 	r.job.Status, r.job.UpdatedBy, r.job.UpdatedAt = StatusCanceled, actor, now
@@ -74,8 +79,8 @@ func (r *fakeRepository) Confirm(_ context.Context, _ sqlx.ExtContext, value Job
 	r.job.Version++
 	return r.job, true, nil
 }
-func (r *fakeRepository) ClaimValidation(_ context.Context, tenantID, id string, now time.Time) (Job, bool, error) {
-	if r.job.TenantID != tenantID || r.job.ID != id || r.job.Status != StatusQueued {
+func (r *fakeRepository) ClaimValidation(_ context.Context, tenantID, applicationID, id string, now time.Time) (Job, bool, error) {
+	if r.job.TenantID != tenantID || r.job.ApplicationID != applicationID || r.job.ID != id || r.job.Status != StatusQueued {
 		return Job{}, false, nil
 	}
 	r.job.Status, r.job.StartedAt, r.job.UpdatedAt = StatusValidating, &now, now
@@ -87,8 +92,8 @@ func (r *fakeRepository) FinishValidation(_ context.Context, _ sqlx.ExtContext, 
 	r.job.Version++
 	return r.job, nil
 }
-func (r *fakeRepository) ClaimApply(_ context.Context, tenantID, id string, now time.Time) (Job, bool, error) {
-	if r.job.TenantID != tenantID || r.job.ID != id || r.job.Status != StatusApplyQueued {
+func (r *fakeRepository) ClaimApply(_ context.Context, tenantID, applicationID, id string, now time.Time) (Job, bool, error) {
+	if r.job.TenantID != tenantID || r.job.ApplicationID != applicationID || r.job.ID != id || r.job.Status != StatusApplyQueued {
 		return Job{}, false, nil
 	}
 	r.job.Status, r.job.StartedAt, r.job.UpdatedAt = StatusApplying, &now, now
@@ -190,7 +195,7 @@ func TestServiceCreateIsTenantScopedAndIdempotent(t *testing.T) {
 	repository := &fakeRepository{}
 	service := NewService(repository, fakeTransaction{}, &fakeStorage{}, 15*time.Minute)
 	service.now = func() time.Time { return now }
-	input := CreateInput{TenantID: "tenant-1", DatasetCode: "billing.invoices", ProviderService: "billing-service", Format: FormatCSV, Filename: "账单.csv", IdempotencyKey: "request-1"}
+	input := CreateInput{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "billing.invoices", ProviderService: "billing-service", Format: FormatCSV, Filename: "账单.csv", IdempotencyKey: "request-1"}
 	job, upload, duplicate, err := service.Create(userContext("tenant-1"), input)
 	if err != nil || duplicate || upload.URL == nil {
 		t.Fatalf("job=%+v upload=%+v duplicate=%v err=%v", job, upload, duplicate, err)
@@ -211,14 +216,14 @@ func TestServiceCompleteUploadVerifiesObjectAndWritesRequestedEvent(t *testing.T
 	repository := &fakeRepository{}
 	storage := &fakeStorage{info: ObjectInfo{Size: 42, Checksum: "abc"}}
 	service := NewService(repository, fakeTransaction{}, storage, time.Minute)
-	job, _, _, err := service.Create(userContext("tenant-1"), CreateInput{TenantID: "tenant-1", DatasetCode: "users.accounts", ProviderService: "identity-service", Format: FormatJSONL, IdempotencyKey: "request-1"})
+	job, _, _, err := service.Create(userContext("tenant-1"), CreateInput{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "users.accounts", ProviderService: "identity-service", Format: FormatJSONL, IdempotencyKey: "request-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CompleteUpload(userContext("tenant-1"), "tenant-1", job.ID, job.Version, 41, "abc"); err == nil {
+	if _, err := service.CompleteUpload(userContext("tenant-1"), "tenant-1", "app-1", job.ID, job.Version, 41, "abc"); err == nil {
 		t.Fatal("mismatched size accepted")
 	}
-	updated, err := service.CompleteUpload(userContext("tenant-1"), "tenant-1", job.ID, job.Version, 42, "abc")
+	updated, err := service.CompleteUpload(userContext("tenant-1"), "tenant-1", "app-1", job.ID, job.Version, 42, "abc")
 	if err != nil || updated.Status != StatusQueued {
 		t.Fatalf("job=%+v err=%v", updated, err)
 	}
@@ -228,15 +233,26 @@ func TestServiceCompleteUploadVerifiesObjectAndWritesRequestedEvent(t *testing.T
 }
 
 func TestServiceConfirmIsIdempotentAndWritesApplyEventOnce(t *testing.T) {
-	repository := &fakeRepository{job: Job{ID: "job-1", TenantID: "tenant-1", Status: StatusReady, Version: 3}}
+	repository := &fakeRepository{job: Job{ID: "job-1", TenantID: "tenant-1", ApplicationID: "app-1", Status: StatusReady, Version: 3}}
 	service := NewService(repository, fakeTransaction{}, &fakeStorage{}, time.Minute)
-	job, duplicate, err := service.Confirm(userContext("tenant-1"), "tenant-1", "job-1", 3, "confirm-1")
+	job, duplicate, err := service.Confirm(userContext("tenant-1"), "tenant-1", "app-1", "job-1", 3, "confirm-1")
 	if err != nil || duplicate || job.Status != StatusApplyQueued {
 		t.Fatalf("job=%+v duplicate=%v err=%v", job, duplicate, err)
 	}
-	again, duplicate, err := service.Confirm(userContext("tenant-1"), "tenant-1", "job-1", 3, "confirm-1")
+	again, duplicate, err := service.Confirm(userContext("tenant-1"), "tenant-1", "app-1", "job-1", 3, "confirm-1")
 	if err != nil || !duplicate || again.ID != job.ID || len(repository.events) != 1 {
 		t.Fatalf("again=%+v duplicate=%v events=%d err=%v", again, duplicate, len(repository.events), err)
+	}
+}
+
+func TestRuntimeServiceRejectsApplicationWithoutGrant(t *testing.T) {
+	service, err := NewRuntimeService(&fakeRepository{}, fakeTransaction{}, &fakeStorage{}, time.Minute, applicationVerifierStub{err: appaccess.ErrNotGranted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, err = service.Create(userContext("tenant-1"), CreateInput{TenantID: "tenant-1", ApplicationID: "app-denied", DatasetCode: "users.accounts", ProviderService: "identity-service", Format: FormatCSV, IdempotencyKey: "request-1"})
+	if err == nil {
+		t.Fatal("ungranted application was accepted")
 	}
 }
 

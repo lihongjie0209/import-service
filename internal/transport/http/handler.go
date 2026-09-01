@@ -23,19 +23,22 @@ func NewHandler(healthService *health.Service, importService *importjob.Service,
 }
 
 type ListImportDatasetsRequest struct {
-	TenantID string `json:"tenant_id"`
-	Search   string `json:"search"`
-	Page     int32  `json:"page"`
-	PageSize int32  `json:"page_size"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id"`
+	Search        string `json:"search"`
+	Page          int32  `json:"page"`
+	PageSize      int32  `json:"page_size"`
 }
 type DescribeImportDatasetRequest struct {
 	TenantID        string `json:"tenant_id"`
+	ApplicationID   string `json:"application_id"`
 	ProviderService string `json:"provider_service"`
 	DatasetCode     string `json:"dataset_code"`
 }
 
 type CreateImportRequest struct {
 	TenantID        string `json:"tenant_id"`
+	ApplicationID   string `json:"application_id"`
 	DatasetCode     string `json:"dataset_code"`
 	ProviderService string `json:"provider_service"`
 	Format          string `json:"format"`
@@ -43,25 +46,29 @@ type CreateImportRequest struct {
 	IdempotencyKey  string `json:"idempotency_key"`
 }
 type ImportSelector struct {
-	TenantID string `json:"tenant_id"`
-	ID       string `json:"id"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id"`
+	ID            string `json:"id"`
 }
 type ListImportsRequest struct {
-	TenantID    string     `json:"tenant_id"`
-	Status      string     `json:"status"`
-	DatasetCode string     `json:"dataset_code"`
-	CreatedFrom *time.Time `json:"created_from"`
-	CreatedTo   *time.Time `json:"created_to"`
-	Page        int32      `json:"page"`
-	PageSize    int32      `json:"page_size"`
+	TenantID      string     `json:"tenant_id"`
+	ApplicationID string     `json:"application_id"`
+	Status        string     `json:"status"`
+	DatasetCode   string     `json:"dataset_code"`
+	CreatedFrom   *time.Time `json:"created_from"`
+	CreatedTo     *time.Time `json:"created_to"`
+	Page          int32      `json:"page"`
+	PageSize      int32      `json:"page_size"`
 }
 type VersionedImportRequest struct {
-	TenantID string `json:"tenant_id"`
-	ID       string `json:"id"`
-	Version  int64  `json:"version"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id"`
+	ID            string `json:"id"`
+	Version       int64  `json:"version"`
 }
 type CompleteUploadRequest struct {
 	TenantID       string `json:"tenant_id"`
+	ApplicationID  string `json:"application_id"`
 	ID             string `json:"id"`
 	Version        int64  `json:"version"`
 	SourceBytes    int64  `json:"source_bytes"`
@@ -69,15 +76,17 @@ type CompleteUploadRequest struct {
 }
 type RetryImportRequest struct {
 	TenantID       string `json:"tenant_id"`
+	ApplicationID  string `json:"application_id"`
 	ID             string `json:"id"`
 	Version        int64  `json:"version"`
 	IdempotencyKey string `json:"idempotency_key"`
 }
 type ConfirmImportRequest RetryImportRequest
 type ErrorReportRequest struct {
-	TenantID   string `json:"tenant_id"`
-	ID         string `json:"id"`
-	TTLSeconds int32  `json:"ttl_seconds"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id"`
+	ID            string `json:"id"`
+	TTLSeconds    int32  `json:"ttl_seconds"`
 }
 
 // @Summary Check process liveness
@@ -131,7 +140,7 @@ func (h *Handler) ListImportDatasets(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	items, total, page, pageSize, err := h.catalog.List(c.Request.Context(), r.TenantID, r.Search, r.Page, r.PageSize)
+	items, total, page, pageSize, err := h.catalog.List(c.Request.Context(), r.TenantID, r.ApplicationID, r.Search, r.Page, r.PageSize)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -153,7 +162,7 @@ func (h *Handler) DescribeImportDataset(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	value, err := h.catalog.Describe(c.Request.Context(), r.TenantID, r.ProviderService, r.DatasetCode)
+	value, err := h.catalog.Describe(c.Request.Context(), r.TenantID, r.ApplicationID, r.ProviderService, r.DatasetCode)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -175,7 +184,7 @@ func (h *Handler) CreateImport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, upload, duplicate, err := h.imports.Create(c.Request.Context(), importjob.CreateInput{TenantID: r.TenantID, DatasetCode: r.DatasetCode, ProviderService: r.ProviderService, Format: r.Format, Filename: r.Filename, IdempotencyKey: r.IdempotencyKey})
+	job, upload, duplicate, err := h.imports.Create(c.Request.Context(), importjob.CreateInput{TenantID: r.TenantID, ApplicationID: r.ApplicationID, DatasetCode: r.DatasetCode, ProviderService: r.ProviderService, Format: r.Format, Filename: r.Filename, IdempotencyKey: r.IdempotencyKey})
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -197,7 +206,7 @@ func (h *Handler) CompleteUpload(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, err := h.imports.CompleteUpload(c.Request.Context(), r.TenantID, r.ID, r.Version, r.SourceBytes, r.SourceChecksum)
+	job, err := h.imports.CompleteUpload(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Version, r.SourceBytes, r.SourceChecksum)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -219,7 +228,7 @@ func (h *Handler) GetImport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, err := h.imports.Get(c.Request.Context(), r.TenantID, r.ID)
+	job, err := h.imports.Get(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -241,7 +250,7 @@ func (h *Handler) ListImports(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	page, err := h.imports.List(c.Request.Context(), importjob.ListFilter{TenantID: r.TenantID, Status: r.Status, DatasetCode: r.DatasetCode, CreatedFrom: r.CreatedFrom, CreatedTo: r.CreatedTo, Page: r.Page, PageSize: r.PageSize})
+	page, err := h.imports.List(c.Request.Context(), importjob.ListFilter{TenantID: r.TenantID, ApplicationID: r.ApplicationID, Status: r.Status, DatasetCode: r.DatasetCode, CreatedFrom: r.CreatedFrom, CreatedTo: r.CreatedTo, Page: r.Page, PageSize: r.PageSize})
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -276,7 +285,7 @@ func (h *Handler) CancelImport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, err := h.imports.Cancel(c.Request.Context(), r.TenantID, r.ID, r.Version)
+	job, err := h.imports.Cancel(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Version)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -298,7 +307,7 @@ func (h *Handler) RetryImport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, upload, duplicate, err := h.imports.Retry(c.Request.Context(), r.TenantID, r.ID, r.Version, r.IdempotencyKey)
+	job, upload, duplicate, err := h.imports.Retry(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Version, r.IdempotencyKey)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -320,7 +329,7 @@ func (h *Handler) ConfirmImport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	job, duplicate, err := h.imports.Confirm(c.Request.Context(), r.TenantID, r.ID, r.Version, r.IdempotencyKey)
+	job, duplicate, err := h.imports.Confirm(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Version, r.IdempotencyKey)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
@@ -342,7 +351,7 @@ func (h *Handler) DownloadErrorReport(c *gin.Context) {
 	if !h.bind(c, &r) {
 		return
 	}
-	value, expires, job, err := h.imports.CreateErrorReportDownloadURL(c.Request.Context(), r.TenantID, r.ID, time.Duration(r.TTLSeconds)*time.Second)
+	value, expires, job, err := h.imports.CreateErrorReportDownloadURL(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, time.Duration(r.TTLSeconds)*time.Second)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return

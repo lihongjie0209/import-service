@@ -25,7 +25,7 @@ func (s *importServer) ListImportDatasets(ctx context.Context, r *importv1.ListI
 	if r.GetPage() != nil {
 		page, size = int32(r.GetPage().GetPage()), int32(r.GetPage().GetPageSize())
 	}
-	values, total, page, size, err := s.catalog.List(ctx, r.GetTenantId(), r.GetSearch(), page, size)
+	values, total, page, size, err := s.catalog.List(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetSearch(), page, size)
 	items := make([]*importv1.ImportDatasetSummary, len(values))
 	for i, value := range values {
 		items[i] = &importv1.ImportDatasetSummary{ProviderService: value.ProviderService, Code: value.Code, Title: value.Title, Formats: value.Formats, MaxBatchSize: value.MaxBatchSize, SupportsDryRun: value.SupportsDryRun, HealthyInstances: value.HealthyInstances}
@@ -34,7 +34,7 @@ func (s *importServer) ListImportDatasets(ctx context.Context, r *importv1.ListI
 }
 
 func (s *importServer) DescribeAvailableImportDataset(ctx context.Context, r *importv1.DescribeAvailableImportDatasetRequest) (*importv1.DescribeAvailableImportDatasetResponse, error) {
-	value, err := s.catalog.Describe(ctx, r.GetTenantId(), r.GetProviderService(), r.GetDatasetCode())
+	value, err := s.catalog.Describe(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetProviderService(), r.GetDatasetCode())
 	columns := make([]*importv1.ImportColumn, len(value.Columns))
 	for i, column := range value.Columns {
 		columns[i] = &importv1.ImportColumn{Key: column.Key, Title: column.Title, Type: column.Type, Required: column.Required, Description: column.Description, Example: column.Example, Sensitive: column.Sensitive}
@@ -44,7 +44,7 @@ func (s *importServer) DescribeAvailableImportDataset(ctx context.Context, r *im
 }
 
 func (s *importServer) CreateImportJob(ctx context.Context, r *importv1.CreateImportJobRequest) (*importv1.CreateImportJobResponse, error) {
-	job, upload, duplicate, err := s.service.Create(ctx, importjob.CreateInput{TenantID: r.GetTenantId(), DatasetCode: r.GetDatasetCode(), ProviderService: r.GetProviderService(), Format: r.GetFormat(), Filename: r.GetFilename(), IdempotencyKey: r.GetIdempotencyKey()})
+	job, upload, duplicate, err := s.service.Create(ctx, importjob.CreateInput{TenantID: r.GetTenantId(), ApplicationID: r.GetApplicationId(), DatasetCode: r.GetDatasetCode(), ProviderService: r.GetProviderService(), Format: r.GetFormat(), Filename: r.GetFilename(), IdempotencyKey: r.GetIdempotencyKey()})
 	response := &importv1.CreateImportJobResponse{Job: importjob.ToProto(job), UploadHeaders: upload.Headers, Duplicate: duplicate}
 	if upload.URL != nil {
 		response.UploadUrl, response.UploadUrlExpiresAt = upload.URL.String(), timestamppb.New(upload.ExpiresAt)
@@ -53,12 +53,12 @@ func (s *importServer) CreateImportJob(ctx context.Context, r *importv1.CreateIm
 }
 
 func (s *importServer) CompleteUpload(ctx context.Context, r *importv1.CompleteUploadRequest) (*importv1.CompleteUploadResponse, error) {
-	job, err := s.service.CompleteUpload(ctx, r.GetTenantId(), r.GetId(), r.GetVersion(), r.GetSourceBytes(), r.GetSourceChecksum())
+	job, err := s.service.CompleteUpload(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetVersion(), r.GetSourceBytes(), r.GetSourceChecksum())
 	return &importv1.CompleteUploadResponse{Job: importjob.ToProto(job)}, importError(err)
 }
 
 func (s *importServer) GetImportJob(ctx context.Context, r *importv1.GetImportJobRequest) (*importv1.GetImportJobResponse, error) {
-	job, err := s.service.Get(ctx, r.GetTenantId(), r.GetId())
+	job, err := s.service.Get(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId())
 	return &importv1.GetImportJobResponse{Job: importjob.ToProto(job)}, importError(err)
 }
 
@@ -67,7 +67,7 @@ func (s *importServer) ListImportJobs(ctx context.Context, r *importv1.ListImpor
 	if r.GetPage() != nil {
 		page, size = int32(r.GetPage().GetPage()), int32(r.GetPage().GetPageSize())
 	}
-	filter := importjob.ListFilter{TenantID: r.GetTenantId(), Status: r.GetStatus(), DatasetCode: r.GetDatasetCode(), Page: page, PageSize: size}
+	filter := importjob.ListFilter{TenantID: r.GetTenantId(), ApplicationID: r.GetApplicationId(), Status: r.GetStatus(), DatasetCode: r.GetDatasetCode(), Page: page, PageSize: size}
 	if r.GetCreatedFrom() != nil {
 		value := r.GetCreatedFrom().AsTime()
 		filter.CreatedFrom = &value
@@ -85,12 +85,12 @@ func (s *importServer) ListImportJobs(ctx context.Context, r *importv1.ListImpor
 }
 
 func (s *importServer) CancelImportJob(ctx context.Context, r *importv1.CancelImportJobRequest) (*importv1.CancelImportJobResponse, error) {
-	job, err := s.service.Cancel(ctx, r.GetTenantId(), r.GetId(), r.GetVersion())
+	job, err := s.service.Cancel(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetVersion())
 	return &importv1.CancelImportJobResponse{Job: importjob.ToProto(job)}, importError(err)
 }
 
 func (s *importServer) RetryImportJob(ctx context.Context, r *importv1.RetryImportJobRequest) (*importv1.RetryImportJobResponse, error) {
-	job, upload, duplicate, err := s.service.Retry(ctx, r.GetTenantId(), r.GetId(), r.GetVersion(), r.GetIdempotencyKey())
+	job, upload, duplicate, err := s.service.Retry(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetVersion(), r.GetIdempotencyKey())
 	response := &importv1.RetryImportJobResponse{Job: importjob.ToProto(job), UploadHeaders: upload.Headers, Duplicate: duplicate}
 	if upload.URL != nil {
 		response.UploadUrl, response.UploadUrlExpiresAt = upload.URL.String(), timestamppb.New(upload.ExpiresAt)
@@ -99,12 +99,12 @@ func (s *importServer) RetryImportJob(ctx context.Context, r *importv1.RetryImpo
 }
 
 func (s *importServer) ConfirmImportJob(ctx context.Context, r *importv1.ConfirmImportJobRequest) (*importv1.ConfirmImportJobResponse, error) {
-	job, duplicate, err := s.service.Confirm(ctx, r.GetTenantId(), r.GetId(), r.GetVersion(), r.GetIdempotencyKey())
+	job, duplicate, err := s.service.Confirm(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetVersion(), r.GetIdempotencyKey())
 	return &importv1.ConfirmImportJobResponse{Job: importjob.ToProto(job), Duplicate: duplicate}, importError(err)
 }
 
 func (s *importServer) CreateErrorReportDownloadURL(ctx context.Context, r *importv1.CreateErrorReportDownloadURLRequest) (*importv1.CreateErrorReportDownloadURLResponse, error) {
-	value, expires, job, err := s.service.CreateErrorReportDownloadURL(ctx, r.GetTenantId(), r.GetId(), time.Duration(r.GetTtlSeconds())*time.Second)
+	value, expires, job, err := s.service.CreateErrorReportDownloadURL(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), time.Duration(r.GetTtlSeconds())*time.Second)
 	response := &importv1.CreateErrorReportDownloadURLResponse{}
 	if err == nil {
 		response.Url, response.ExpiresAt = value.String(), timestamppb.New(expires)
