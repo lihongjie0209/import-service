@@ -72,16 +72,16 @@ func importGRPCRequirement(enabled bool) platformauthz.GRPCResolver {
 			return platformauthz.Requirement{}, false
 		}
 		requirements := map[string]platformauthz.Requirement{
-			importv1.ImportService_ListImportDatasets_FullMethodName:             {Resource: "import.dataset", Action: "list"},
-			importv1.ImportService_DescribeAvailableImportDataset_FullMethodName: {Resource: "import.dataset", Action: "read"},
-			importv1.ImportService_CreateImportJob_FullMethodName:                {Resource: "import.job", Action: "create"},
-			importv1.ImportService_CompleteUpload_FullMethodName:                 {Resource: "import.job", Action: "upload"},
-			importv1.ImportService_GetImportJob_FullMethodName:                   {Resource: "import.job", Action: "read"},
-			importv1.ImportService_ListImportJobs_FullMethodName:                 {Resource: "import.job", Action: "list"},
-			importv1.ImportService_CancelImportJob_FullMethodName:                {Resource: "import.job", Action: "cancel"},
-			importv1.ImportService_RetryImportJob_FullMethodName:                 {Resource: "import.job", Action: "retry"},
-			importv1.ImportService_ConfirmImportJob_FullMethodName:               {Resource: "import.job", Action: "confirm"},
-			importv1.ImportService_CreateErrorReportDownloadURL_FullMethodName:   {Resource: "import.job", Action: "download-error"},
+			importv1.ImportService_ListImportDatasets_FullMethodName:             {Resource: "import.dataset", Action: "list", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_DescribeAvailableImportDataset_FullMethodName: {Resource: "import.dataset", Action: "read", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_CreateImportJob_FullMethodName:                {Resource: "import.job", Action: "create", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_CompleteUpload_FullMethodName:                 {Resource: "import.job", Action: "upload", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_GetImportJob_FullMethodName:                   {Resource: "import.job", Action: "read", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_ListImportJobs_FullMethodName:                 {Resource: "import.job", Action: "list", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_CancelImportJob_FullMethodName:                {Resource: "import.job", Action: "cancel", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_RetryImportJob_FullMethodName:                 {Resource: "import.job", Action: "retry", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_ConfirmImportJob_FullMethodName:               {Resource: "import.job", Action: "confirm", Scope: platformauthz.ScopePrincipal},
+			importv1.ImportService_CreateErrorReportDownloadURL_FullMethodName:   {Resource: "import.job", Action: "download-error", Scope: platformauthz.ScopePrincipal},
 		}
 		requirement, ok := requirements[method]
 		return requirement, ok

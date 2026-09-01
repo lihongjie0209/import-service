@@ -248,16 +248,16 @@ func Authorization(enabled bool, authorizer platformauthz.Authorizer, logger *sl
 
 func importHTTPRequirement(route string) (platformauthz.Requirement, bool) {
 	requirements := map[string]platformauthz.Requirement{
-		"/api/v1/imports/datasets/list":     {Resource: "import.dataset", Action: "list"},
-		"/api/v1/imports/datasets/describe": {Resource: "import.dataset", Action: "read"},
-		"/api/v1/imports/create":            {Resource: "import.job", Action: "create"},
-		"/api/v1/imports/complete-upload":   {Resource: "import.job", Action: "upload"},
-		"/api/v1/imports/get":               {Resource: "import.job", Action: "read"},
-		"/api/v1/imports/list":              {Resource: "import.job", Action: "list"},
-		"/api/v1/imports/cancel":            {Resource: "import.job", Action: "cancel"},
-		"/api/v1/imports/retry":             {Resource: "import.job", Action: "retry"},
-		"/api/v1/imports/confirm":           {Resource: "import.job", Action: "confirm"},
-		"/api/v1/imports/error-report":      {Resource: "import.job", Action: "download-error"},
+		"/api/v1/imports/datasets/list":     {Resource: "import.dataset", Action: "list", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/datasets/describe": {Resource: "import.dataset", Action: "read", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/create":            {Resource: "import.job", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/complete-upload":   {Resource: "import.job", Action: "upload", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/get":               {Resource: "import.job", Action: "read", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/list":              {Resource: "import.job", Action: "list", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/cancel":            {Resource: "import.job", Action: "cancel", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/retry":             {Resource: "import.job", Action: "retry", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/confirm":           {Resource: "import.job", Action: "confirm", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/imports/error-report":      {Resource: "import.job", Action: "download-error", Scope: platformauthz.ScopePrincipal},
 	}
 	requirement, ok := requirements[route]
 	return requirement, ok

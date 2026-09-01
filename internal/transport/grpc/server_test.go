@@ -6,6 +6,7 @@ import (
 
 	"github.com/lihongjie0209/import-service/internal/auth"
 	"github.com/lihongjie0209/import-service/internal/config"
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	"google.golang.org/grpc/codes"
@@ -21,6 +22,9 @@ func TestImportGRPCRequirementCoversEveryBusinessMethod(t *testing.T) {
 		requirement, ok := resolve(method)
 		if !ok || requirement.Resource == "" || requirement.Action == "" {
 			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
+		if requirement.Scope != platformauthz.ScopePrincipal {
+			t.Fatalf("method %q scope = %q, want principal", method, requirement.Scope)
 		}
 	}
 	if _, ok := importGRPCRequirement(false)(importv1.ImportService_GetImportJob_FullMethodName); ok {
