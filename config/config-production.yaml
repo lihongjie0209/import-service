@@ -32,6 +32,8 @@ rate_limit:
   enabled: true
 idempotency:
   enabled: true
+  http_paths: [/api/v1/imports/complete-upload, /api/v1/imports/cancel, /api/v1/imports/confirm]
+  grpc_methods: [/platform.import.v1.ImportService/CompleteUpload, /platform.import.v1.ImportService/CancelImportJob, /platform.import.v1.ImportService/ConfirmImportJob]
 observability:
   metrics_enabled: true
   tracing_enabled: false
