@@ -85,6 +85,17 @@ definitions:
       tenant_id:
         type: string
     type: object
+  httptransport.ErrorReportBody:
+    properties:
+      content_type:
+        type: string
+      expires_at:
+        type: string
+      filename:
+        type: string
+      url:
+        type: string
+    type: object
   httptransport.ErrorReportRequest:
     properties:
       application_id:
@@ -219,6 +230,13 @@ definitions:
       version:
         type: integer
     type: object
+  httptransport.ImportMutationBody:
+    properties:
+      duplicate:
+        type: boolean
+      job:
+        $ref: '#/definitions/httptransport.ImportJobBody'
+    type: object
   httptransport.ImportPageBody:
     properties:
       items:
@@ -347,7 +365,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ImportJobBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []
@@ -400,7 +423,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ImportMutationBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []
@@ -511,7 +539,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ErrorReportBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []
@@ -593,7 +626,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ImportUploadBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []

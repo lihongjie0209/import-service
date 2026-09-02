@@ -126,6 +126,12 @@ type ImportUploadBody struct {
 	UploadHeaders      map[string]string `json:"upload_headers"`
 	UploadURLExpiresAt time.Time         `json:"upload_url_expires_at"`
 }
+type ErrorReportBody struct {
+	URL         string    `json:"url"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+}
 
 func importJobBody(job importjob.Job) ImportJobBody {
 	return ImportJobBody{ID: job.ID, TenantID: job.TenantID, ApplicationID: job.ApplicationID, DatasetCode: job.DatasetCode, ProviderService: job.ProviderService, Format: job.Format, Filename: job.Filename, Status: job.Status, SourceChecksum: job.SourceChecksum, SourceBytes: job.SourceBytes, TotalRows: job.TotalRows, ValidRows: job.ValidRows, InvalidRows: job.InvalidRows, AppliedRows: job.AppliedRows, ProgressPercent: job.ProgressPercent, ErrorCode: job.ErrorCode, ErrorMessage: job.ErrorMessage, UploadExpiresAt: job.UploadExpiresAt, StartedAt: job.StartedAt, CompletedAt: job.CompletedAt, ResultExpiresAt: job.ResultExpiresAt, Version: job.Version, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt, CreatedBy: job.CreatedBy, UpdatedBy: job.UpdatedBy}
@@ -375,7 +381,7 @@ func normalizePage(page, size int32) (int32, int32) {
 // @Security Bearer
 // @Security PSK
 // @Param request body VersionedImportRequest true "Job and current version"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportJobBody}
 // @Router /api/v1/imports/cancel [post]
 func (h *Handler) CancelImport(c *gin.Context) {
 	var r VersionedImportRequest
@@ -397,7 +403,7 @@ func (h *Handler) CancelImport(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body RetryImportRequest true "Retry request"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportUploadBody}
 // @Router /api/v1/imports/retry [post]
 func (h *Handler) RetryImport(c *gin.Context) {
 	var r RetryImportRequest
@@ -419,7 +425,7 @@ func (h *Handler) RetryImport(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body ConfirmImportRequest true "Confirmation request"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportMutationBody}
 // @Router /api/v1/imports/confirm [post]
 func (h *Handler) ConfirmImport(c *gin.Context) {
 	var r ConfirmImportRequest
@@ -441,7 +447,7 @@ func (h *Handler) ConfirmImport(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body ErrorReportRequest true "Download request"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ErrorReportBody}
 // @Router /api/v1/imports/error-report [post]
 func (h *Handler) DownloadErrorReport(c *gin.Context) {
 	var r ErrorReportRequest
@@ -453,5 +459,5 @@ func (h *Handler) DownloadErrorReport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"url": value.String(), "expires_at": expires, "filename": job.Filename + ".errors.csv", "content_type": "text/csv; charset=utf-8"})
+	OK(c, ErrorReportBody{URL: value.String(), ExpiresAt: expires, Filename: job.Filename + ".errors.csv", ContentType: "text/csv; charset=utf-8"})
 }

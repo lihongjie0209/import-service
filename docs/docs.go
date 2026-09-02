@@ -50,7 +50,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportJobBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -144,7 +156,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportMutationBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -344,7 +368,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ErrorReportBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -491,7 +527,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportUploadBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -741,6 +789,23 @@ const docTemplate = `{
                 }
             }
         },
+        "httptransport.ErrorReportBody": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "httptransport.ErrorReportRequest": {
             "type": "object",
             "properties": {
@@ -942,6 +1007,17 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "httptransport.ImportMutationBody": {
+            "type": "object",
+            "properties": {
+                "duplicate": {
+                    "type": "boolean"
+                },
+                "job": {
+                    "$ref": "#/definitions/httptransport.ImportJobBody"
                 }
             }
         },
