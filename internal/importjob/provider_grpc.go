@@ -186,7 +186,7 @@ type grpcValidationSession struct {
 
 func (p *GRPCProvider) OpenValidation(ctx context.Context, service, tenant, application, dataset string) (ValidationSession, error) {
 	s := &grpcValidationSession{provider: p, tenant: tenant, application: application, dataset: dataset, ctx: ctx, service: service}
-	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen); err != nil {
+	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen, func() { p.failure(s.instance) }); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -215,12 +215,12 @@ func (s *grpcValidationSession) ValidateBatch(request ValidateBatchRequest) (Val
 		if err == nil {
 			break
 		}
-		s.provider.failure(s.instance)
 		if s.stream != nil {
 			_ = s.stream.CloseSend()
 			s.stream = nil
 		}
 		if !retryableProviderError(s.ctx, err) || attempt == s.provider.attempts() {
+			s.provider.failure(s.instance)
 			return ValidateBatchResult{}, err
 		}
 		if err = waitProviderRetry(s.ctx, s.provider.config.Retry, attempt); err != nil {
@@ -244,8 +244,8 @@ func (s *grpcValidationSession) reopen() error {
 		return err
 	}
 	stream, err := client.ValidateRows(s.ctx)
+	s.instance = instance
 	if err != nil {
-		s.provider.failure(instance)
 		return err
 	}
 	s.instance, s.stream = instance, stream
@@ -277,7 +277,7 @@ type grpcApplySession struct {
 
 func (p *GRPCProvider) OpenApply(ctx context.Context, service, tenant, application, dataset string) (ApplySession, error) {
 	s := &grpcApplySession{provider: p, tenant: tenant, application: application, dataset: dataset, ctx: ctx, service: service}
-	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen); err != nil {
+	if err := openProviderSession(ctx, p.config.Retry, p.attempts(), s.reopen, func() { p.failure(s.instance) }); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -306,12 +306,12 @@ func (s *grpcApplySession) ApplyBatch(request ApplyBatchRequest) (ApplyBatchResu
 		if err == nil {
 			break
 		}
-		s.provider.failure(s.instance)
 		if s.stream != nil {
 			_ = s.stream.CloseSend()
 			s.stream = nil
 		}
 		if !retryableProviderError(s.ctx, err) || attempt == s.provider.attempts() {
+			s.provider.failure(s.instance)
 			return ApplyBatchResult{}, err
 		}
 		if err = waitProviderRetry(s.ctx, s.provider.config.Retry, attempt); err != nil {
@@ -339,8 +339,8 @@ func (s *grpcApplySession) reopen() error {
 		return err
 	}
 	stream, err := client.ApplyRows(s.ctx)
+	s.instance = instance
 	if err != nil {
-		s.provider.failure(instance)
 		return err
 	}
 	s.instance, s.stream = instance, stream
@@ -349,13 +349,16 @@ func (s *grpcApplySession) reopen() error {
 
 func (p *GRPCProvider) attempts() int { return max(1, p.config.Retry.MaxAttempts) }
 
-func openProviderSession(ctx context.Context, retry config.Retry, attempts int, open func() error) error {
+func openProviderSession(ctx context.Context, retry config.Retry, attempts int, open func() error, exhausted func()) error {
 	var err error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if err = open(); err == nil {
 			return nil
 		}
 		if (ctx != nil && ctx.Err() != nil) || attempt == attempts {
+			if exhausted != nil {
+				exhausted()
+			}
 			return err
 		}
 		if err = waitProviderRetry(ctx, retry, attempt); err != nil {

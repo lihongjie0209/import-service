@@ -9,7 +9,9 @@ import (
 	"github.com/lihongjie0209/import-service/internal/config"
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type validationStreamStub struct {
@@ -134,9 +136,35 @@ func TestOpenProviderSessionRetriesDiscoveryStartupRace(t *testing.T) {
 			return io.EOF
 		}
 		return nil
-	})
+	}, nil)
 	if err != nil || attempts != 3 {
 		t.Fatalf("attempts=%d err=%v", attempts, err)
+	}
+}
+
+func TestOpenProviderSessionEjectsOnlyAfterRetriesAreExhausted(t *testing.T) {
+	t.Parallel()
+	failures := 0
+	attempts := 0
+	err := openProviderSession(t.Context(), config.Retry{InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond}, 3, func() error {
+		attempts++
+		return status.Error(codes.Unavailable, "provider unavailable")
+	}, func() { failures++ })
+	if status.Code(err) != codes.Unavailable || attempts != 3 || failures != 1 {
+		t.Fatalf("attempts=%d failures=%d err=%v", attempts, failures, err)
+	}
+
+	failures = 0
+	attempts = 0
+	err = openProviderSession(t.Context(), config.Retry{InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond}, 3, func() error {
+		attempts++
+		if attempts == 1 {
+			return status.Error(codes.Unavailable, "startup race")
+		}
+		return nil
+	}, func() { failures++ })
+	if err != nil || attempts != 2 || failures != 0 {
+		t.Fatalf("attempts=%d failures=%d err=%v", attempts, failures, err)
 	}
 }
 
