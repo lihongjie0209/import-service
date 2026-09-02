@@ -129,8 +129,8 @@ func newImportWorker(repository importjob.Repository, transactor *database.Trans
 	return importjob.NewWorker(repository, transactor, storage, provider, cfg.Import.BatchSize, cfg.Import.MaxRows, cfg.Import.MaxBytes, cfg.Import.JobTimeout, cfg.Import.ResultTTL)
 }
 
-func newImportService(repository importjob.Repository, transactor *database.Transactor, storage importjob.Storage, cfg config.Config, applications appaccess.Verifier) (*importjob.Service, error) {
-	return importjob.NewRuntimeService(repository, transactor, storage, cfg.Import.UploadTTL, applications)
+func newImportService(repository importjob.Repository, transactor *database.Transactor, storage importjob.Storage, cfg config.Config, applications appaccess.Verifier, provider importjob.Provider) (*importjob.Service, error) {
+	return importjob.NewRuntimeService(repository, transactor, storage, cfg.Import.UploadTTL, applications, provider)
 }
 
 var ImportModule = fx.Module("import", fx.Provide(objectstorage.New, importjob.NewRepository, importjob.NewProvider, importjob.NewRuntimeCatalog, newImportService, newImportWorker))

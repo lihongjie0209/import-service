@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lihongjie0209/import-service/internal/apperror"
 	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 )
@@ -246,13 +248,41 @@ func TestServiceConfirmIsIdempotentAndWritesApplyEventOnce(t *testing.T) {
 }
 
 func TestRuntimeServiceRejectsApplicationWithoutGrant(t *testing.T) {
-	service, err := NewRuntimeService(&fakeRepository{}, fakeTransaction{}, &fakeStorage{}, time.Minute, applicationVerifierStub{err: appaccess.ErrNotGranted})
+	service, err := NewRuntimeService(&fakeRepository{}, fakeTransaction{}, &fakeStorage{}, time.Minute, applicationVerifierStub{err: appaccess.ErrNotGranted}, providerStub{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _, _, err = service.Create(userContext("tenant-1"), CreateInput{TenantID: "tenant-1", ApplicationID: "app-denied", DatasetCode: "users.accounts", ProviderService: "identity-service", Format: FormatCSV, IdempotencyKey: "request-1"})
 	if err == nil {
 		t.Fatal("ungranted application was accepted")
+	}
+}
+
+func TestServiceValidatesImportFormatAgainstProviderDescriptor(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		descriptor  DatasetDescriptor
+		providerErr error
+		code        int
+	}{
+		{name: "unsupported format", descriptor: DatasetDescriptor{Code: "billing.plans", Formats: []string{"xlsx"}}, code: apperror.CodeInvalidArgument},
+		{name: "different dataset", descriptor: DatasetDescriptor{Code: "other", Formats: []string{"csv"}}, code: apperror.CodeInvalidArgument},
+		{name: "provider unavailable", providerErr: errors.New("offline"), code: apperror.CodeDependencyUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			provider := providerStub{describe: func(string, string, string, string) (DatasetDescriptor, error) {
+				return test.descriptor, test.providerErr
+			}}
+			service := NewService(&fakeRepository{}, fakeTransaction{}, &fakeStorage{}, time.Minute)
+			service.provider = provider
+			_, _, _, err := service.Create(userContext("tenant-1"), CreateInput{TenantID: "tenant-1", ApplicationID: "app-1", DatasetCode: "billing.plans", ProviderService: "billing-service", Format: FormatCSV, Filename: "plans.csv", IdempotencyKey: "request-1"})
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) || appErr.Code != test.code {
+				t.Fatalf("error = %#v", err)
+			}
+		})
 	}
 }
 

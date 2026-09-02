@@ -31,6 +31,7 @@ type Service struct {
 	uploadTTL    time.Duration
 	now          func() time.Time
 	applications appaccess.Verifier
+	provider     Provider
 }
 
 type allowAllApplications struct{}
@@ -41,12 +42,16 @@ func NewService(repository Repository, transactor transactionRunner, storage Sto
 	return &Service{repository: repository, transactor: transactor, storage: storage, uploadTTL: uploadTTL, now: time.Now, applications: allowAllApplications{}}
 }
 
-func NewRuntimeService(repository Repository, transactor transactionRunner, storage Storage, uploadTTL time.Duration, applications appaccess.Verifier) (*Service, error) {
+func NewRuntimeService(repository Repository, transactor transactionRunner, storage Storage, uploadTTL time.Duration, applications appaccess.Verifier, provider Provider) (*Service, error) {
 	if applications == nil {
 		return nil, errors.New("application verifier is required")
 	}
+	if provider == nil {
+		return nil, errors.New("import dataset provider is required")
+	}
 	service := NewService(repository, transactor, storage, uploadTTL)
 	service.applications = applications
+	service.provider = provider
 	return service, nil
 }
 
@@ -59,6 +64,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, Upload, b
 	input.Format, input.Filename, input.IdempotencyKey = clean(input.Format), clean(input.Filename), clean(input.IdempotencyKey)
 	if input.TenantID == "" || input.ApplicationID == "" || !codePattern.MatchString(input.DatasetCode) || !codePattern.MatchString(input.ProviderService) || !validFormat(input.Format) || input.IdempotencyKey == "" {
 		return Job{}, Upload{}, false, apperror.Invalid("tenant_id, application_id, dataset_code, provider_service, format, and idempotency_key are required", nil)
+	}
+	if err := s.validateDataset(ctx, input); err != nil {
+		return Job{}, Upload{}, false, err
 	}
 	now := s.now()
 	id := uuid.NewString()
@@ -86,6 +94,25 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Job, Upload, b
 		return Job{}, Upload{}, false, err
 	}
 	return job, upload, !created, nil
+}
+
+func (s *Service) validateDataset(ctx context.Context, input CreateInput) error {
+	if s.provider == nil {
+		return nil
+	}
+	value, err := s.provider.DescribeDataset(ctx, input.TenantID, input.ApplicationID, input.ProviderService, input.DatasetCode)
+	if err != nil {
+		return apperror.Unavailable("import dataset descriptor is unavailable", err)
+	}
+	if value.Code != input.DatasetCode {
+		return apperror.Invalid("import provider returned a different dataset", nil)
+	}
+	for _, format := range value.Formats {
+		if format == input.Format {
+			return nil
+		}
+	}
+	return apperror.Invalid("dataset does not support the requested format", nil)
 }
 
 func (s *Service) CompleteUpload(ctx context.Context, tenantID, applicationID, id string, expected, sourceBytes int64, checksum string) (Job, error) {
