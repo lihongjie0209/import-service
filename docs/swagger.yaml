@@ -96,6 +96,74 @@ definitions:
       ttl_seconds:
         type: integer
     type: object
+  httptransport.ImportColumnBody:
+    properties:
+      description:
+        type: string
+      example:
+        type: string
+      key:
+        type: string
+      required:
+        type: boolean
+      sensitive:
+        type: boolean
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  httptransport.ImportDatasetDescriptorBody:
+    properties:
+      code:
+        type: string
+      columns:
+        items:
+          $ref: '#/definitions/httptransport.ImportColumnBody'
+        type: array
+      formats:
+        items:
+          type: string
+        type: array
+      max_batch_size:
+        type: integer
+      supports_dry_run:
+        type: boolean
+      title:
+        type: string
+    type: object
+  httptransport.ImportDatasetPageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.ImportDatasetSummaryBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  httptransport.ImportDatasetSummaryBody:
+    properties:
+      code:
+        type: string
+      formats:
+        items:
+          type: string
+        type: array
+      healthy_instances:
+        type: integer
+      max_batch_size:
+        type: integer
+      provider_service:
+        type: string
+      supports_dry_run:
+        type: boolean
+      title:
+        type: string
+    type: object
   httptransport.ImportSelector:
     properties:
       application_id:
@@ -292,7 +360,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ImportDatasetDescriptorBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []
@@ -316,7 +389,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ImportDatasetPageBody'
+              type: object
       security:
       - Bearer: []
       - PSK: []

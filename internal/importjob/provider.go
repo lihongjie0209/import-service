@@ -13,8 +13,13 @@ type DatasetSummary struct {
 }
 
 type ImportColumn struct {
-	Key, Title, Type, Description, Example string
-	Required, Sensitive                    bool
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Example     string `json:"example"`
+	Required    bool   `json:"required"`
+	Sensitive   bool   `json:"sensitive"`
 }
 
 type DatasetDescriptor struct {

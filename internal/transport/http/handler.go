@@ -35,6 +35,38 @@ type DescribeImportDatasetRequest struct {
 	ProviderService string `json:"provider_service"`
 	DatasetCode     string `json:"dataset_code"`
 }
+type ImportDatasetSummaryBody struct {
+	ProviderService  string   `json:"provider_service"`
+	Code             string   `json:"code"`
+	Title            string   `json:"title"`
+	Formats          []string `json:"formats"`
+	MaxBatchSize     int32    `json:"max_batch_size"`
+	SupportsDryRun   bool     `json:"supports_dry_run"`
+	HealthyInstances int32    `json:"healthy_instances"`
+}
+type ImportDatasetPageBody struct {
+	Items    []ImportDatasetSummaryBody `json:"items"`
+	Total    int64                      `json:"total"`
+	Page     int32                      `json:"page"`
+	PageSize int32                      `json:"page_size"`
+}
+type ImportColumnBody struct {
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Example     string `json:"example"`
+	Required    bool   `json:"required"`
+	Sensitive   bool   `json:"sensitive"`
+}
+type ImportDatasetDescriptorBody struct {
+	Code           string             `json:"code"`
+	Title          string             `json:"title"`
+	Columns        []ImportColumnBody `json:"columns"`
+	Formats        []string           `json:"formats"`
+	MaxBatchSize   int32              `json:"max_batch_size"`
+	SupportsDryRun bool               `json:"supports_dry_run"`
+}
 
 type CreateImportRequest struct {
 	TenantID        string `json:"tenant_id"`
@@ -133,7 +165,7 @@ func (h *Handler) bind(c *gin.Context, target any) bool {
 // @Security Bearer
 // @Security PSK
 // @Param request body ListImportDatasetsRequest true "Search and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportDatasetPageBody}
 // @Router /api/v1/imports/datasets/list [post]
 func (h *Handler) ListImportDatasets(c *gin.Context) {
 	var r ListImportDatasetsRequest
@@ -145,7 +177,11 @@ func (h *Handler) ListImportDatasets(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize})
+	body := make([]ImportDatasetSummaryBody, len(items))
+	for i, item := range items {
+		body[i] = ImportDatasetSummaryBody{ProviderService: item.ProviderService, Code: item.Code, Title: item.Title, Formats: item.Formats, MaxBatchSize: item.MaxBatchSize, SupportsDryRun: item.SupportsDryRun, HealthyInstances: item.HealthyInstances}
+	}
+	OK(c, ImportDatasetPageBody{Items: body, Total: total, Page: page, PageSize: pageSize})
 }
 
 // @Summary Describe an available import dataset
@@ -155,7 +191,7 @@ func (h *Handler) ListImportDatasets(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body DescribeImportDatasetRequest true "Provider and dataset"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportDatasetDescriptorBody}
 // @Router /api/v1/imports/datasets/describe [post]
 func (h *Handler) DescribeImportDataset(c *gin.Context) {
 	var r DescribeImportDatasetRequest
@@ -167,7 +203,11 @@ func (h *Handler) DescribeImportDataset(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, value)
+	columns := make([]ImportColumnBody, len(value.Columns))
+	for i, column := range value.Columns {
+		columns[i] = ImportColumnBody{Key: column.Key, Title: column.Title, Type: column.Type, Description: column.Description, Example: column.Example, Required: column.Required, Sensitive: column.Sensitive}
+	}
+	OK(c, ImportDatasetDescriptorBody{Code: value.Code, Title: value.Title, Columns: columns, Formats: value.Formats, MaxBatchSize: value.MaxBatchSize, SupportsDryRun: value.SupportsDryRun})
 }
 
 // @Summary Create an import job and upload URL

@@ -214,7 +214,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportDatasetDescriptorBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -255,7 +267,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportDatasetPageBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -683,6 +707,110 @@ const docTemplate = `{
                 },
                 "ttl_seconds": {
                     "type": "integer"
+                }
+            }
+        },
+        "httptransport.ImportColumnBody": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "example": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "sensitive": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "httptransport.ImportDatasetDescriptorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/httptransport.ImportColumnBody"
+                    }
+                },
+                "formats": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_batch_size": {
+                    "type": "integer"
+                },
+                "supports_dry_run": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "httptransport.ImportDatasetPageBody": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/httptransport.ImportDatasetSummaryBody"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httptransport.ImportDatasetSummaryBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "formats": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "healthy_instances": {
+                    "type": "integer"
+                },
+                "max_batch_size": {
+                    "type": "integer"
+                },
+                "provider_service": {
+                    "type": "string"
+                },
+                "supports_dry_run": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
                 }
             }
         },
