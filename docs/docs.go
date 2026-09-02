@@ -91,7 +91,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportJobBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -173,7 +185,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportUploadBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -369,7 +393,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "body": {
-                                            "$ref": "#/definitions/importjob.Job"
+                                            "$ref": "#/definitions/httptransport.ImportJobBody"
                                         }
                                     }
                                 }
@@ -414,7 +438,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httptransport.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httptransport.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "body": {
+                                            "$ref": "#/definitions/httptransport.ImportPageBody"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -826,6 +862,109 @@ const docTemplate = `{
                 }
             }
         },
+        "httptransport.ImportJobBody": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "applied_rows": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "dataset_code": {
+                    "type": "string"
+                },
+                "error_code": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invalid_rows": {
+                    "type": "integer"
+                },
+                "progress_percent": {
+                    "type": "integer"
+                },
+                "provider_service": {
+                    "type": "string"
+                },
+                "result_expires_at": {
+                    "type": "string"
+                },
+                "source_bytes": {
+                    "type": "integer"
+                },
+                "source_checksum": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "total_rows": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                },
+                "upload_expires_at": {
+                    "type": "string"
+                },
+                "valid_rows": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httptransport.ImportPageBody": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/httptransport.ImportJobBody"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "httptransport.ImportSelector": {
             "type": "object",
             "properties": {
@@ -836,6 +975,29 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httptransport.ImportUploadBody": {
+            "type": "object",
+            "properties": {
+                "duplicate": {
+                    "type": "boolean"
+                },
+                "job": {
+                    "$ref": "#/definitions/httptransport.ImportJobBody"
+                },
+                "upload_headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "upload_url": {
+                    "type": "string"
+                },
+                "upload_url_expires_at": {
                     "type": "string"
                 }
             }
@@ -935,98 +1097,6 @@ const docTemplate = `{
                 },
                 "tenant_id": {
                     "type": "string"
-                },
-                "version": {
-                    "type": "integer"
-                }
-            }
-        },
-        "importjob.Job": {
-            "type": "object",
-            "properties": {
-                "application_id": {
-                    "type": "string"
-                },
-                "applied_rows": {
-                    "type": "integer"
-                },
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "created_by": {
-                    "type": "string"
-                },
-                "dataset_code": {
-                    "type": "string"
-                },
-                "error_code": {
-                    "type": "string"
-                },
-                "error_message": {
-                    "type": "string"
-                },
-                "error_report_object_key": {
-                    "type": "string"
-                },
-                "filename": {
-                    "type": "string"
-                },
-                "format": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "invalid_rows": {
-                    "type": "integer"
-                },
-                "normalized_object_key": {
-                    "type": "string"
-                },
-                "progress_percent": {
-                    "type": "integer"
-                },
-                "provider_service": {
-                    "type": "string"
-                },
-                "result_expires_at": {
-                    "type": "string"
-                },
-                "source_bytes": {
-                    "type": "integer"
-                },
-                "source_checksum": {
-                    "type": "string"
-                },
-                "source_object_key": {
-                    "type": "string"
-                },
-                "started_at": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "tenant_id": {
-                    "type": "string"
-                },
-                "total_rows": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "updated_by": {
-                    "type": "string"
-                },
-                "upload_expires_at": {
-                    "type": "string"
-                },
-                "valid_rows": {
-                    "type": "integer"
                 },
                 "version": {
                     "type": "integer"

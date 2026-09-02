@@ -82,6 +82,63 @@ type ImportSelector struct {
 	ApplicationID string `json:"application_id"`
 	ID            string `json:"id"`
 }
+type ImportJobBody struct {
+	ID              string     `json:"id"`
+	TenantID        string     `json:"tenant_id"`
+	ApplicationID   string     `json:"application_id"`
+	DatasetCode     string     `json:"dataset_code"`
+	ProviderService string     `json:"provider_service"`
+	Format          string     `json:"format"`
+	Filename        string     `json:"filename"`
+	Status          string     `json:"status"`
+	SourceChecksum  string     `json:"source_checksum"`
+	SourceBytes     int64      `json:"source_bytes"`
+	TotalRows       int64      `json:"total_rows"`
+	ValidRows       int64      `json:"valid_rows"`
+	InvalidRows     int64      `json:"invalid_rows"`
+	AppliedRows     int64      `json:"applied_rows"`
+	ProgressPercent int32      `json:"progress_percent"`
+	ErrorCode       string     `json:"error_code"`
+	ErrorMessage    string     `json:"error_message"`
+	UploadExpiresAt *time.Time `json:"upload_expires_at,omitempty"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+	ResultExpiresAt *time.Time `json:"result_expires_at,omitempty"`
+	Version         int64      `json:"version"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	CreatedBy       string     `json:"created_by"`
+	UpdatedBy       string     `json:"updated_by"`
+}
+type ImportPageBody struct {
+	Items    []ImportJobBody `json:"items"`
+	Total    int64           `json:"total"`
+	Page     int32           `json:"page"`
+	PageSize int32           `json:"page_size"`
+}
+type ImportMutationBody struct {
+	Job       ImportJobBody `json:"job"`
+	Duplicate bool          `json:"duplicate"`
+}
+type ImportUploadBody struct {
+	ImportMutationBody
+	UploadURL          string            `json:"upload_url"`
+	UploadHeaders      map[string]string `json:"upload_headers"`
+	UploadURLExpiresAt time.Time         `json:"upload_url_expires_at"`
+}
+
+func importJobBody(job importjob.Job) ImportJobBody {
+	return ImportJobBody{ID: job.ID, TenantID: job.TenantID, ApplicationID: job.ApplicationID, DatasetCode: job.DatasetCode, ProviderService: job.ProviderService, Format: job.Format, Filename: job.Filename, Status: job.Status, SourceChecksum: job.SourceChecksum, SourceBytes: job.SourceBytes, TotalRows: job.TotalRows, ValidRows: job.ValidRows, InvalidRows: job.InvalidRows, AppliedRows: job.AppliedRows, ProgressPercent: job.ProgressPercent, ErrorCode: job.ErrorCode, ErrorMessage: job.ErrorMessage, UploadExpiresAt: job.UploadExpiresAt, StartedAt: job.StartedAt, CompletedAt: job.CompletedAt, ResultExpiresAt: job.ResultExpiresAt, Version: job.Version, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt, CreatedBy: job.CreatedBy, UpdatedBy: job.UpdatedBy}
+}
+
+func importJobBodies(jobs []importjob.Job) []ImportJobBody {
+	result := make([]ImportJobBody, len(jobs))
+	for i := range jobs {
+		result[i] = importJobBody(jobs[i])
+	}
+	return result
+}
+
 type ListImportsRequest struct {
 	TenantID      string     `json:"tenant_id"`
 	ApplicationID string     `json:"application_id"`
@@ -217,7 +274,7 @@ func (h *Handler) DescribeImportDataset(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body CreateImportRequest true "Import definition"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportUploadBody}
 // @Router /api/v1/imports/create [post]
 func (h *Handler) CreateImport(c *gin.Context) {
 	var r CreateImportRequest
@@ -229,7 +286,7 @@ func (h *Handler) CreateImport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"job": job, "upload_url": upload.URL.String(), "upload_headers": upload.Headers, "upload_url_expires_at": upload.ExpiresAt, "duplicate": duplicate})
+	OK(c, ImportUploadBody{ImportMutationBody: ImportMutationBody{Job: importJobBody(job), Duplicate: duplicate}, UploadURL: upload.URL.String(), UploadHeaders: upload.Headers, UploadURLExpiresAt: upload.ExpiresAt})
 }
 
 // @Summary Verify upload and enqueue validation
@@ -239,7 +296,7 @@ func (h *Handler) CreateImport(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body CompleteUploadRequest true "Uploaded object metadata"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportJobBody}
 // @Router /api/v1/imports/complete-upload [post]
 func (h *Handler) CompleteUpload(c *gin.Context) {
 	var r CompleteUploadRequest
@@ -251,7 +308,7 @@ func (h *Handler) CompleteUpload(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, job)
+	OK(c, importJobBody(job))
 }
 
 // @Summary Get an import job
@@ -261,7 +318,7 @@ func (h *Handler) CompleteUpload(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body ImportSelector true "Job selector"
-// @Success 200 {object} Response{body=importjob.Job}
+// @Success 200 {object} Response{body=ImportJobBody}
 // @Router /api/v1/imports/get [post]
 func (h *Handler) GetImport(c *gin.Context) {
 	var r ImportSelector
@@ -273,7 +330,7 @@ func (h *Handler) GetImport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, job)
+	OK(c, importJobBody(job))
 }
 
 // @Summary Search import jobs
@@ -283,7 +340,7 @@ func (h *Handler) GetImport(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body ListImportsRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ImportPageBody}
 // @Router /api/v1/imports/list [post]
 func (h *Handler) ListImports(c *gin.Context) {
 	var r ListImportsRequest
@@ -296,7 +353,7 @@ func (h *Handler) ListImports(c *gin.Context) {
 		return
 	}
 	number, size := normalizePage(r.Page, r.PageSize)
-	OK(c, gin.H{"items": page.Items, "total": page.Total, "page": number, "page_size": size})
+	OK(c, ImportPageBody{Items: importJobBodies(page.Items), Total: page.Total, Page: number, PageSize: size})
 }
 
 func normalizePage(page, size int32) (int32, int32) {
@@ -330,7 +387,7 @@ func (h *Handler) CancelImport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, job)
+	OK(c, importJobBody(job))
 }
 
 // @Summary Upload a corrected file and retry validation
@@ -352,7 +409,7 @@ func (h *Handler) RetryImport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"job": job, "upload_url": upload.URL.String(), "upload_headers": upload.Headers, "upload_url_expires_at": upload.ExpiresAt, "duplicate": duplicate})
+	OK(c, ImportUploadBody{ImportMutationBody: ImportMutationBody{Job: importJobBody(job), Duplicate: duplicate}, UploadURL: upload.URL.String(), UploadHeaders: upload.Headers, UploadURLExpiresAt: upload.ExpiresAt})
 }
 
 // @Summary Confirm a fully validated import
@@ -374,7 +431,7 @@ func (h *Handler) ConfirmImport(c *gin.Context) {
 		Fail(c, h.logger, err)
 		return
 	}
-	OK(c, gin.H{"job": job, "duplicate": duplicate})
+	OK(c, ImportMutationBody{Job: importJobBody(job), Duplicate: duplicate})
 }
 
 // @Summary Create a validation error report URL
