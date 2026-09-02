@@ -239,6 +239,67 @@ definitions:
       version:
         type: integer
     type: object
+  importjob.Job:
+    properties:
+      application_id:
+        type: string
+      applied_rows:
+        type: integer
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      dataset_code:
+        type: string
+      error_code:
+        type: string
+      error_message:
+        type: string
+      error_report_object_key:
+        type: string
+      filename:
+        type: string
+      format:
+        type: string
+      id:
+        type: string
+      invalid_rows:
+        type: integer
+      normalized_object_key:
+        type: string
+      progress_percent:
+        type: integer
+      provider_service:
+        type: string
+      result_expires_at:
+        type: string
+      source_bytes:
+        type: integer
+      source_checksum:
+        type: string
+      source_object_key:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+      total_rows:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      upload_expires_at:
+        type: string
+      valid_rows:
+        type: integer
+      version:
+        type: integer
+    type: object
 info:
   contact: {}
   description: 'Production-oriented Go Web API scaffold. Application error codes:
@@ -442,7 +503,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/importjob.Job'
+              type: object
       security:
       - Bearer: []
       - PSK: []

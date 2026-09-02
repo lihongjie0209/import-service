@@ -261,7 +261,7 @@ func (h *Handler) CompleteUpload(c *gin.Context) {
 // @Security Bearer
 // @Security PSK
 // @Param request body ImportSelector true "Job selector"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=importjob.Job}
 // @Router /api/v1/imports/get [post]
 func (h *Handler) GetImport(c *gin.Context) {
 	var r ImportSelector
