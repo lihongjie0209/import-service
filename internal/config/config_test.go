@@ -54,6 +54,24 @@ func TestConfig_OutboundPSKRequiresTLSOrExplicitDevelopmentOptIn(t *testing.T) {
 	}
 }
 
+func TestObjectStorageProductionPolicyRequiresTLSForIOAndPresigning(t *testing.T) {
+	storage := ObjectStorage{Enabled: true, Endpoint: "minio:9000", PresignEndpoint: "files.example.test", AccessKey: "access", SecretKey: "secret", Bucket: "imports", Region: "us-east-1", PresignTTL: time.Minute}
+	if err := validateObjectStoragePolicy(storage, false); err != nil {
+		t.Fatalf("development policy error = %v", err)
+	}
+	if err := validateObjectStoragePolicy(storage, true); err == nil || !strings.Contains(err.Error(), "require TLS") {
+		t.Fatalf("production plaintext storage error = %v", err)
+	}
+	storage.UseSSL = true
+	if err := validateObjectStoragePolicy(storage, true); err == nil || !strings.Contains(err.Error(), "require TLS") {
+		t.Fatalf("production plaintext presign error = %v", err)
+	}
+	storage.PresignUseSSL = true
+	if err := validateObjectStoragePolicy(storage, true); err != nil {
+		t.Fatalf("production TLS policy error = %v", err)
+	}
+}
+
 func TestProductionProfileAuthenticatesApplicationGrantChecks(t *testing.T) {
 	content, err := os.ReadFile("../../config/config-production.yaml")
 	if err != nil {

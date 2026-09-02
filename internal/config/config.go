@@ -651,11 +651,8 @@ func (c Config) Validate() error {
 	if c.EventBus.Enabled && c.EventBus.ConsumerAckWait <= c.Import.JobTimeout {
 		return errors.New("event_bus.consumer_ack_wait must exceed import.job_timeout")
 	}
-	if c.ObjectStorage.Enabled && (c.ObjectStorage.Endpoint == "" || c.ObjectStorage.AccessKey == "" || c.ObjectStorage.SecretKey == "" || c.ObjectStorage.Bucket == "" || c.ObjectStorage.PresignTTL <= 0) {
-		return errors.New("enabled object_storage requires endpoint, credentials, bucket, and positive presign_ttl")
-	}
-	if c.ObjectStorage.Enabled && c.ObjectStorage.PresignEndpoint != "" && c.ObjectStorage.Region == "" {
-		return errors.New("object_storage.region is required with presign_endpoint")
+	if err := validateObjectStoragePolicy(c.ObjectStorage, c.App.Env == "production"); err != nil {
+		return err
 	}
 	if err := validateClientPolicy("provider_client", ClientAuth{}, c.ProviderClient.Retry, c.ProviderClient.Breaker, c.ProviderClient.TLS, c.App.Env == "production"); err != nil {
 		return err
@@ -686,6 +683,22 @@ func (c Config) Validate() error {
 		if err := validateClientPolicy(name, upstream.Auth, upstream.Retry, upstream.Breaker, upstream.TLS, c.App.Env == "production"); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateObjectStoragePolicy(storage ObjectStorage, production bool) error {
+	if !storage.Enabled {
+		return nil
+	}
+	if storage.Endpoint == "" || storage.AccessKey == "" || storage.SecretKey == "" || storage.Bucket == "" || storage.PresignTTL <= 0 {
+		return errors.New("enabled object_storage requires endpoint, credentials, bucket, and positive presign_ttl")
+	}
+	if storage.PresignEndpoint != "" && storage.Region == "" {
+		return errors.New("object_storage.region is required with presign_endpoint")
+	}
+	if production && (!storage.UseSSL || (storage.PresignEndpoint != "" && !storage.PresignUseSSL)) {
+		return errors.New("production object_storage and presigned URLs require TLS")
 	}
 	return nil
 }
